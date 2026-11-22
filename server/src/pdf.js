@@ -143,7 +143,7 @@ async function pv(d) {
   for (const it of d.items) {
     const sc = it.sc;
     h(doc, `Dossier ${it.dossier.reference} — ${it.dossier.title}`, 11.5);
-    p(doc, `Porteur : ${it.dossier.applicant_name}. Procédure ${sc.procedure === 'simplifiee' ? 'simplifiée' : 'ordinaire'}${sc.secret ? ', vote à bulletin secret (art. 29.3)' : ''}. Scrutin n° ${sc.id} ouvert le ${dFr(sc.opened_at, true)}.`, { gap: 0.2 });
+    p(doc, `Procédure ${sc.procedure === 'simplifiee' ? 'simplifiée' : 'ordinaire'}${sc.secret ? ', vote à bulletin secret (art. 29.3)' : ''}. Scrutin n° ${sc.id} ouvert le ${dFr(sc.opened_at, true)}.`, { gap: 0.2 });
     p(doc, `Rapporteurs : ${it.rapporteurs.length ? it.rapporteurs.map((r) => `${r.full_name} (${r.quality})`).join(' ; ') : '—'}.`, { gap: 0.2 });
     p(doc, `Déports pour conflit d’intérêts (art. 4.2) : ${it.deports.length ? it.deports.map((r) => r.full_name).join(' ; ') : 'aucun'}.`, { gap: 0.2 });
     if (sc.status === 'annule') { p(doc, `Scrutin annulé : ${sc.cancel_reason}.`); continue; }
@@ -260,7 +260,7 @@ async function certificatDestruction(d) {
   h(doc, 'Fondement', 11.5);
   bullet(doc, d.fam.map((x) => `${x.reference}${x.kind === 'appel' ? ' (appel)' : ''} : déposé le ${dFr(x.created_at)}, clos le ${x.closed_at ? dFr(x.closed_at) : '—'}, fin du projet le ${dFr(x.project_end_at)}`), 9);
   p(doc, `Durée de conservation : durée du projet augmentée de ${d.retentionYears} ans (règlement intérieur, art. 34.3), expirée le ${dFr(d.proc.retention_until)}.`, { size: 9.5 });
-  h(doc, 'Procédure (art. 34-11.2)', 11.5);
+  h(doc, 'Procédure (art. 45.2)', 11.5);
   bullet(doc, [
     `Proposition du président le ${dFr(d.proc.proposed_at)}.`,
     `Avis du délégué à la protection des données (${d.proc.dpd_name}) : ${d.proc.dpd_opinion === 'favorable' ? 'favorable' : 'défavorable'}, le ${dFr(d.proc.dpd_at)}${d.proc.dpd_method === 'document' ? ', remis par écrit et versé dans l’outil' : ', rendu dans l’outil et signé par double authentification'}${d.proc.dpd_motivation ? ` — « ${d.proc.dpd_motivation} »` : ''}.`,
@@ -274,7 +274,7 @@ async function certificatDestruction(d) {
     'l’historique du dossier et les notifications.',
   ], 9);
   p(doc, d.counts.keptAvis.length ? `Avis conservés au titre des archives de l’association : ${d.counts.keptAvis.map((a) => a.title).join(' ; ')}.` : 'Aucun avis n’a été conservé.', { size: 9.5 });
-  p(doc, (d.counts.keptPV || []).length ? `Procès-verbaux de séance conservés au titre des archives de l’association (art. 34-11.2) : ${d.counts.keptPV.map((a) => a.title).join(' ; ')}.` : 'Aucun procès-verbal de séance ne mentionne ce dossier.', { size: 9.5 });
+  p(doc, (d.counts.keptPV || []).length ? `Procès-verbaux de séance conservés au titre des archives de l’association (art. 45.2) : ${d.counts.keptPV.map((a) => a.title).join(' ; ')}.` : 'Aucun procès-verbal de séance ne mentionne ce dossier.', { size: 9.5 });
   h(doc, 'Empreintes des éléments détruits', 11.5);
   small(doc, 'Les empreintes SHA-256 permettent de prouver qu’un élément produit plus tard est, ou n’est pas, l’un des éléments détruits. Elles ne contiennent aucune donnée lisible.');
   bullet(doc, [

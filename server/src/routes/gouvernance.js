@@ -117,6 +117,13 @@ router.post('/scrutins/:sid/cloture', admin, run((req, res) => {
   }
 }));
 
+router.post('/scrutins/:sid/demande-seance', run((req, res) => {
+  const sc = scrutinFor(req, res); if (!sc) return;
+  gov.requestSession(sc, req.user);
+  audit.fromReq(req, 'examen_en_seance_demande', `scrutin #${sc.id}`);
+  res.json({ ok: true });
+}));
+
 router.post('/scrutins/:sid/annulation', admin, run((req, res) => {
   const sc = scrutinFor(req, res); if (!sc) return;
   const reason = String((req.body || {}).reason || '').trim();
@@ -281,7 +288,7 @@ router.post('/actes/:aid/reception', admin, run((req, res) => {
   res.json({ appeal: require('../reception').appealDeadline(a) });
 }));
 
-// ---------- Conservation et destruction (art. 34.3 et 34-11.2) ----------
+// ---------- Conservation et destruction (art. 34.3 et 45.2) ----------
 const retention = require('../retention');
 const adminOrDpd = (req, res, next) => (gov.isAdmin(req.user) || req.user.dpd ? next() : res.status(403).json({ error: 'Réservé au président et au délégué à la protection des données' }));
 const runR = (fn) => run(async (req, res) => {

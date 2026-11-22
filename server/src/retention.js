@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Destruction des dossiers en fin de conservation (règlement intérieur,
- * art. 34.3 et 34-11.2 proposés).
+ * art. 34.3 et 45.2).
  *
  *  - Durée : fin du projet + [10] ans. Sans date de fin de projet renseignée,
  *    aucune destruction n'est possible.
@@ -107,7 +107,7 @@ function propose(d, by) {
     q().prepare('INSERT INTO notifications (user_id, type, dossier_id, message, created_at) VALUES (?,?,?,?,?)')
       .run(u.id, 'destruction', r.root.id, `Avis demandé : destruction du dossier ${r.root.reference}`, Date.now());
     mailer.send({ to: u.email, subject: `Avis du DPD demandé — destruction ${r.root.reference}`,
-      text: `Bonjour ${u.full_name},\n\nLe président du ${config.committeeName} propose la destruction, en fin de conservation, du dossier ${r.root.reference}${r.family.length > 1 ? ` et de son appel` : ''} (art. 34-11.2). Votre avis est requis.\n${config.publicUrl}/#/admin/conservation\n` });
+      text: `Bonjour ${u.full_name},\n\nLe président du ${config.committeeName} propose la destruction, en fin de conservation, du dossier ${r.root.reference}${r.family.length > 1 ? ` et de son appel` : ''} (art. 45.2). Votre avis est requis.\n${config.publicUrl}/#/admin/conservation\n` });
   }
   return { id, dpds: dpds.length };
 }
@@ -180,7 +180,7 @@ async function decideAndExecute(proc, by, { keepAvis = true, note = '' }) {
   const ballots = scrutins.length ? q().prepare(`SELECT COUNT(*) n FROM bulletins WHERE scrutin_id IN (${scrutins.map(() => '?').join(',')})`).get(...scrutins).n : 0;
   const actes = q().prepare(`SELECT * FROM actes WHERE dossier_id IN ${inList}`).all(...ids);
   const keptActes = actes.filter((a) => keepAvis && a.type === 'avis');
-  // Procès-verbaux des séances où la famille a été examinée : conservés au titre des archives (art. 34-11.2)
+  // Procès-verbaux des séances où la famille a été examinée : conservés au titre des archives (art. 45.2)
   const keptPV = scrutins.length ? q().prepare(`SELECT DISTINCT a.id, a.title, a.sha256 FROM actes a JOIN scrutins s ON s.seance_id = a.seance_id
     WHERE a.type = 'pv' AND s.id IN (${scrutins.map(() => '?').join(',')}) ORDER BY a.id`).all(...scrutins) : [];
   const delActes = actes.filter((a) => !keptActes.includes(a));

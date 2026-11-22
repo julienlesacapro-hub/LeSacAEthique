@@ -2,7 +2,7 @@
 /**
  * Journal d'audit en ajout seul : connexions, échecs, consultations et
  * téléchargements de documents, actions d'administration (règlement
- * intérieur, art. 40, ligne « Journalisation »).
+ * intérieur, art. 52, ligne « Journalisation »).
  */
 const db = require('./db');
 

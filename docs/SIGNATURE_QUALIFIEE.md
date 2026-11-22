@@ -39,7 +39,7 @@ En attendant le choix d'un prestataire de signature qualifiée :
 | Avis (art. 31.3, annexe 7) | Président (vice-président en suppléance) | **Qualifiée** |
 | Procès-verbal de séance (art. 29.4) | Président et secrétariat | Qualifiée pour le président ; qualifiée ou avancée pour le secrétariat |
 | Rapport annuel (art. 34.2) | Président | Qualifiée, ou authentification forte dans l'outil |
-| Commentaires, votes des membres | Chaque membre | **Aucun certificat nécessaire** : la double authentification et la signature du serveur suffisent (art. 34-6) |
+| Commentaires, votes des membres | Chaque membre | **Aucun certificat nécessaire** : la double authentification et la signature du serveur suffisent (art. 52) |
 
 Il faut donc **deux certificats** (président et vice-président), voire trois avec le secrétariat. Il n'en faut pas un par membre.
 
@@ -93,7 +93,7 @@ Il faut donc **deux certificats** (président et vice-président), voire trois a
 - la saisine (formulaire en ligne) ;
 - l'instruction, les échanges et les rapports ;
 - les déports ;
-- les votes, en séance ou par voie électronique, une fois le Titre IV bis adopté ;
+- les votes, en séance ou par voie électronique, une fois le Titre V adopté ;
 - les procès-verbaux et les avis signés électroniquement ;
 - la transmission au porteur ;
 - l'archivage, avec contrôles d'intégrité et rapports de validation.
@@ -103,7 +103,7 @@ Il faut donc **deux certificats** (président et vice-président), voire trois a
 1. La vérification d'identité lors de la délivrance du certificat. Elle peut se faire par vidéo chez certains prestataires.
 2. La clé USB du signataire, sauf choix d'une signature à distance.
 3. **La modification des statuts** (nom du comité) et l'adoption du règlement intérieur, selon les formes prévues par les statuts : assemblée générale, procès-verbal signé par le Président et le Secrétaire général (art. 20.3 du projet de statuts). Ces signatures peuvent aussi être électroniques. Vérifiez cependant les exigences du greffe des associations pour la déclaration de la modification.
-4. La conservation hors de l'outil d'une copie des procès-verbaux (art. 34-7.3). Elle peut être numérique, sur un support distinct, et n'a pas besoin d'être sur papier.
+4. La conservation hors de l'outil d'une copie des procès-verbaux (art. 41.3). Elle peut être numérique, sur un support distinct, et n'a pas besoin d'être sur papier.
 
 **Seul point de vigilance (Interprétation) :** la conservation à long terme. Pour qu'un avis signé en 2026 reste vérifiable en 2040, il faut un horodatage qualifié au moment de la signature (PAdES-LTA), ou le rapport de validation conservé dans l'outil. Sans l'un ou l'autre, la signature reste probante, mais elle sera plus difficile à vérifier une fois le certificat expiré.
 

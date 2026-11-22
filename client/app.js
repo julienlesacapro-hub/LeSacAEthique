@@ -798,7 +798,7 @@ async function viewAudit() {
       h('details', {}, h('summary', { class: 'small' }, 'Clé publique de signature du serveur'), h('pre', { class: 'mono' }, r.publicKey))));
   } }, 'Vérifier l’intégrité des commentaires et documents');
   shell('/admin/journal', h('a', { href: '#/admin/membres', class: 'small' }, '← Membres'), h('h1', {}, 'Journal et intégrité'),
-    h('div', { class: 'card stack' }, h('p', { class: 'small' }, 'Le journal (connexions, consultations, téléchargements, actions d’administration) est en ajout seul. Le règlement intérieur prévoit une analyse au moins tous les deux mois (art. 40). Un contrôle d’intégrité est aussi effectué automatiquement avant chaque validation de vote et chaque clôture de séance.'), check, res),
+    h('div', { class: 'card stack' }, h('p', { class: 'small' }, 'Le journal (connexions, consultations, téléchargements, actions d’administration) est en ajout seul. Le règlement intérieur prévoit une analyse au moins tous les deux mois (art. 52). Un contrôle d’intégrité est aussi effectué automatiquement avant chaque validation de vote et chaque clôture de séance.'), check, res),
     h('details', { class: 'card table-wrap' }, h('summary', {}, `Historique des contrôles d’intégrité (${checks.length})`), h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'N°'), h('th', {}, 'Date'), h('th', {}, 'Par'), h('th', {}, 'Objet'), h('th', {}, 'Résultat'), h('th', {}, 'Empreinte'))),
       h('tbody', {}, checks.map((c) => h('tr', {}, h('td', {}, c.id), h('td', {}, fmtDate(c.at)), h('td', {}, c.full_name || '—'), h('td', {}, c.purpose), h('td', {}, c.ok ? 'Conforme' : 'NON CONFORME'), h('td', { class: 'mono' }, c.last_hash.slice(0, 16) + '…')))))),
     h('div', { class: 'card table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Date'), h('th', {}, 'Personne'), h('th', {}, 'Action'), h('th', {}, 'Objet'), h('th', {}, 'IP'))),
@@ -865,6 +865,12 @@ function scrutinBlock(sc, data, id, reload) {
   box.append(h('details', {}, h('summary', { class: 'small' }, 'Membres appelés à voter'),
     h('ul', { class: 'small' }, sc.electeurs.map((e) => h('li', {}, `${e.full_name}${e.substitute_for_name ? ` (remplace ${e.substitute_for_name})` : ''} — ${e.voted ? 'a voté' : 'n’a pas encore voté'}`)))));
   if (sc.status === 'annule') box.append(h('p', { class: 'small' }, `Motif : ${sc.cancel_reason}`));
+  if (sc.status === 'ouvert' && !sc.seance_id && sc.procedure === 'ordinaire' && data.isMember) {
+    box.append(actBtn('Demander l’examen en séance (art. 43.3)', async () => {
+      if (!confirm('Le vote électronique sera annulé et le dossier examiné en séance. Continuer ?')) return;
+      await api('POST', `/gov/scrutins/${sc.id}/demande-seance`); toast('Vote annulé : examen en séance demandé'); reload();
+    }));
+  }
   if (sc.canVote) {
     const choices = Object.entries(CH()).filter(([k]) => sc.procedure !== 'simplifiee' || (k !== 'defavorable' && k !== 'abstention'));
     const f = h('form', { class: 'stack' },
@@ -923,7 +929,7 @@ function openScrutinForm(data, extra, id, reload) {
     h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'secret' }), 'Vote à bulletin secret (de droit si un membre le demande, art. 29.3)'),
     supp.length ? h('details', {}, h('summary', { class: 'small' }, 'Suppléants siégeant en remplacement'),
       supp.map((m) => field(`${m.full_name} remplace :`, h('select', { name: `sub_${m.id}` }, h('option', { value: '' }, '— personne —'), tit.map((t) => h('option', { value: t.id }, t.full_name)))))) : null,
-    h('p', { class: 'hint' }, 'Procédure ordinaire : deux rapporteurs doivent être désignés ; tous les membres votants non déportés sont appelés à voter et notifiés.'),
+    h('p', { class: 'hint' }, 'Procédure ordinaire : deux rapporteurs doivent être désignés ; tous les membres votants non déportés sont appelés à voter et notifiés. Hors séance, une date limite d’au moins 5 jours ouvrés est obligatoire (art. 43.3).'),
     h('button', { type: 'submit' }, 'Ouvrir le vote'));
   f.addEventListener('submit', submitting(f, async (fd) => {
     const substitutes = supp.filter((m) => fd.get(`sub_${m.id}`)).map((m) => ({ user_id: m.id, substitute_for: +fd.get(`sub_${m.id}`) }));
@@ -1245,7 +1251,7 @@ async function viewConservation() {
     return box;
   };
   shell('/admin/conservation', h('h1', {}, 'Conservation et destruction'),
-    h('p', { class: 'muted small' }, `Durée de conservation : fin du projet + ${years} ans (art. 34.3). Destruction dossier par dossier, sur décision du président, après avis du délégué à la protection des données (art. 34-11.2).`),
+    h('p', { class: 'muted small' }, `Durée de conservation : fin du projet + ${years} ans (art. 34.3). Destruction dossier par dossier, sur décision du président, après avis du délégué à la protection des données (art. 45.2).`),
     h('h2', {}, 'Procédures en cours'), open.length ? h('div', { class: 'stack' }, open.map(procCard)) : h('p', { class: 'muted' }, 'Aucune.'),
     isAdmin ? h('h2', {}, 'Échéances') : null,
     isAdmin ? (echeances.length ? h('div', { class: 'stack' }, echeances.map((e) => h('a', { class: 'dossier-item', href: `#/dossiers/${e.id}` }, h('div', { class: 'card row between' },

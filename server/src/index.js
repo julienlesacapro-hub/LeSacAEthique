@@ -11,7 +11,7 @@ setInterval(() => {
   db.get().prepare('DELETE FROM sessions WHERE expires_at < ? OR (stage = \'full\' AND last_seen_at < ?)')
     .run(now, now - config.session.idleMinutes * 60e3);
   db.get().prepare('DELETE FROM tokens WHERE expires_at < ?').run(now - 7 * 864e5);
-  // Journal d'audit : conservation d'un an (art. 40 du règlement intérieur)
+  // Journal d'audit : conservation d'un an (art. 52 du règlement intérieur)
   db.get().prepare('DELETE FROM audit_log WHERE at < ?').run(now - 366 * 864e5);
 }, 10 * 60e3).unref();
 
