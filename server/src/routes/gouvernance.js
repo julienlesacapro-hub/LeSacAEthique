@@ -269,6 +269,87 @@ router.post('/actes/:aid/transmettre', admin, run(async (req, res) => {
   res.json({ ok: true, ...r });
 }));
 
+// Déclaration de la date de réception de l'avis (accusé de réception postal, courriel du porteur…)
+router.post('/actes/:aid/reception', admin, run((req, res) => {
+  const a = acteFor(req, res); if (!a) return;
+  if (a.type !== 'avis' || a.parent_id) return res.status(400).json({ error: 'Choisissez l’avis d’origine' });
+  try { require('../reception').declare(a, req.user, req.body || {}); } catch (e) {
+    if (e.rule) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+  audit.fromReq(req, 'reception_avis_declaree', a.title);
+  res.json({ appeal: require('../reception').appealDeadline(a) });
+}));
+
+// ---------- Conservation et destruction (art. 34.3 et 34-11.2) ----------
+const retention = require('../retention');
+const adminOrDpd = (req, res, next) => (gov.isAdmin(req.user) || req.user.dpd ? next() : res.status(403).json({ error: 'Réservé au président et au délégué à la protection des données' }));
+const runR = (fn) => run(async (req, res) => {
+  try { await fn(req, res); } catch (e) { if (e instanceof retention.RuleError) return res.status(400).json({ error: e.message }); throw e; }
+});
+function procFor(req, res) {
+  const p = retention.getProc(req.params.pid);
+  if (!p) { res.status(404).json({ error: 'Procédure introuvable' }); return null; }
+  return p;
+}
+const procView = (p) => {
+  const d = domain.getDossier(p.dossier_id);
+  return { ...p, family: undefined, reference: d.reference, counts: p.counts_json ? JSON.parse(p.counts_json) : null, counts_json: undefined };
+};
+
+router.get('/conservation', adminOrDpd, (req, res) => {
+  const procs = q().prepare('SELECT * FROM destructions ORDER BY id DESC LIMIT 200').all().map(procView);
+  res.json({ echeances: retention.echeances(), procedures: procs, years: config.retentionYears });
+});
+
+router.post('/dossiers/:id/fin-projet', manager, runR((req, res) => {
+  const d = dossierFor(req, res); if (!d) return;
+  retention.setProjectEnd(d, req.user, (req.body || {}).date);
+  audit.fromReq(req, 'fin_projet_renseignee', d.reference);
+  res.json({ retention: retention.viewFor(domain.getDossier(d.id)) });
+}));
+
+router.post('/dossiers/:id/destruction', admin, runR((req, res) => {
+  const d = dossierFor(req, res); if (!d) return;
+  const r = retention.propose(d, req.user);
+  audit.fromReq(req, 'destruction_proposee', d.reference);
+  res.status(201).json({ procedure: procView(retention.getProc(r.id)), dpdNotified: r.dpds });
+}));
+
+router.post('/destructions/:pid/avis-dpd', runR((req, res) => {
+  const p = procFor(req, res); if (!p) return;
+  const fresh = q().prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!checkSecondFactor(fresh, (req.body || {}).code)) return res.status(401).json({ error: 'Code de double authentification invalide : l’avis n’est pas signé.' });
+  const r = retention.dpdOpinion(p, req.user, req.body || {});
+  audit.fromReq(req, 'avis_dpd_destruction', `procédure #${p.id}`, r.dpd_opinion);
+  res.json({ procedure: procView(r) });
+}));
+
+router.post('/destructions/:pid/avis-dpd-document', admin, uploadScan.single('file'), runR(async (req, res) => {
+  const p = procFor(req, res); if (!p) return;
+  const b = req.body || {};
+  const r = await retention.dpdDocument(p, req.user, { opinion: b.opinion, motivation: b.motivation, dpdName: b.dpd_name, file: req.file });
+  audit.fromReq(req, 'avis_dpd_destruction_verse', `procédure #${p.id}`, r.dpd_opinion);
+  res.json({ procedure: procView(r) });
+}));
+
+router.post('/destructions/:pid/decision', admin, runR(async (req, res) => {
+  const p = procFor(req, res); if (!p) return;
+  const b = req.body || {};
+  const fresh = q().prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!checkSecondFactor(fresh, b.code)) return res.status(401).json({ error: 'Code de double authentification invalide : la décision n’est pas signée.' });
+  const r = await retention.decideAndExecute(p, req.user, { keepAvis: b.keep_avis !== false, note: b.note });
+  audit.fromReq(req, 'destruction_executee', `procédure #${p.id}`, r.counts);
+  res.json({ procedure: procView(retention.getProc(p.id)), certificate: gov.acteView(r.certificate), shredded: r.shredded });
+}));
+
+router.post('/destructions/:pid/abandon', admin, runR((req, res) => {
+  const p = procFor(req, res); if (!p) return;
+  retention.abandon(p, req.user, (req.body || {}).reason);
+  audit.fromReq(req, 'destruction_abandonnee', `procédure #${p.id}`);
+  res.json({ procedure: procView(retention.getProc(p.id)) });
+}));
+
 // ---------- Rapport annuel (art. 34.2) ----------
 router.get('/rapport-annuel', (req, res) => {
   const year = parseInt(req.query.annee, 10) || new Date().getFullYear();

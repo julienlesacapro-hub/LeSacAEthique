@@ -136,6 +136,7 @@ async function render() {
     if (path === '/profil') return viewProfile();
     if (path === '/admin/membres' && S.user.role === 'admin') return viewMembers();
     if (path === '/admin/journal' && S.user.role === 'admin') return viewAudit();
+    if (path === '/admin/conservation' && (S.user.role === 'admin' || S.user.dpd)) return viewConservation();
     if (path === '/admin/nouveau' && S.user.role === 'admin') return viewNewDossier();
     return go('/dossiers');
   } catch (e) {
@@ -161,8 +162,9 @@ function shell(path, ...content) {
     ['/notifications', 'Notifications', 'bell'],
     ['/profil', 'Mon compte', 'user'],
     ...(isAdmin ? [['/admin/membres', 'Administration', 'shield']] : []),
+    ...(!isAdmin && S.user.dpd ? [['/admin/conservation', 'Conservation', 'shield']] : []),
   ];
-  const cur = (p) => (path === p || (p === '/dossiers' && path.startsWith('/dossiers')) || (p === '/admin/membres' && path.startsWith('/admin')) || (p === '/seances' && (path.startsWith('/seances') || path === '/rapport')) ? 'page' : null);
+  const cur = (p) => (path === p || (p === '/dossiers' && path.startsWith('/dossiers')) || (p === '/admin/membres' && path.startsWith('/admin')) || (p === '/admin/conservation' && path === '/admin/conservation') || (p === '/seances' && (path.startsWith('/seances') || path === '/rapport')) ? 'page' : null);
   const badge = (p) => (p === '/notifications' && S.unread ? h('span', { class: 'badge-count', 'aria-label': `${S.unread} non lues` }, S.unread) : null);
   const roleLabel = { lecture: 'Lecture seule', ecriture: 'Lecture et écriture', admin: 'Administrateur' };
   $app.replaceChildren(
@@ -431,7 +433,7 @@ async function viewDossier(id) {
   try { data = await api('GET', `/dossiers/${id}`); } catch (e) {
     return shell('/dossiers', h('a', { href: '#/dossiers' }, '← Dossiers'), h('p', { class: e.body && e.body.recused ? 'alert warn' : 'alert err' }, e.message));
   }
-  const { dossier: d, documents, comments, events, conflicts, lastReadCommentId, canWrite, isAdmin, canManage, isRapporteur, closed, initial, appealDeadline, appealOf } = data;
+  const { dossier: d, documents, comments, events, conflicts, lastReadCommentId, canWrite, isAdmin, canManage, isRapporteur, closed, initial, appeal, appealOf, retention } = data;
   const extra = isAdmin ? await Promise.all([api('GET', '/gov/membres'), api('GET', '/gov/seances')]).catch(() => null) : null;
   const docsById = Object.fromEntries(documents.map((x) => [x.id, x]));
   refreshUnread();
@@ -534,7 +536,7 @@ async function viewDossier(id) {
         `, formé le ${fmtDate(d.created_at, false)} par ${d.appeal_requester} (${d.appeal_role === 'president_association' ? 'président de l’association' : 'porteur du projet'}, ${d.appeal_requester_email}).`),
       h('p', { class: 'small' }, 'Examen en séance plénière, par des rapporteurs différents de ceux du dossier initial. Les copies du dossier initial figurent dans les documents (pièce « Dossier initial »).')) : null,
     d.related_reference ? h('p', { class: 'alert warn small' }, `Appel formé hors délai contre l’avis du dossier ${d.related_reference} : enregistré comme une nouvelle demande, sans reprise du dossier initial.`) : null,
-    !initial && appealDeadline ? h('p', { class: 'small muted' }, appealOf ? h('span', {}, 'Un appel a été formé : ', h('a', { href: `#/dossiers/${appealOf.id}` }, appealOf.reference)) : `Délai d’appel : jusqu’au ${fmtDate(appealDeadline, false)}${Date.now() > appealDeadline ? ' (expiré)' : ''}.`) : null,
+    retention && retention.destroyed ? h('p', { class: 'alert warn' }, `Dossier détruit en fin de conservation le ${fmtDate(retention.destroyed)}. Seuls la référence, les avis conservés et le certificat de destruction subsistent.`) : null,
     closed ? h('p', { class: 'alert ok' }, `Procédure close et dossier archivé le ${fmtDate(closed.at)} par ${closed.by}. Le dossier est en lecture seule ; le relevé de clôture figure dans les actes.`) : null,
     h('div', { class: 'dossier-grid' },
       h('div', { class: 'stack' },
@@ -556,6 +558,8 @@ async function viewDossier(id) {
         conflicts.length ? h('section', { class: 'card small' }, h('h3', {}, 'Membres déportés'), h('ul', {}, conflicts.map((c) => h('li', {}, `${c.full_name}${c.quality ? ' (' + c.quality + ')' : ''} — ${fmtDate(c.declared_at, false)}`)))) : null,
         h('details', { class: 'card small' }, h('summary', {}, 'Historique du dossier'),
           h('ul', {}, events.map((e) => h('li', {}, `${fmtDate(e.at)} — ${e.details}${e.full_name ? ' (' + e.full_name + ')' : ''}`)))),
+        appeal && !(retention && retention.destroyed) ? receptionCard(data, id) : null,
+        retention && closed && (canManage || isAdmin || S.user.fonction === 'secretariat' || S.user.dpd) ? conservationCard(data, id) : null,
         ...govSections(data, extra, id),
         adminBox,
         closed ? null : recuse),
@@ -766,7 +770,7 @@ async function viewMembers(pendingLink = null) {
       h('div', {}, h('b', {}, u.full_name), u.id === S.user.id ? ' (vous)' : '', h('div', { class: 'small muted' }, `${u.quality || '—'} · ${u.email}`),
         h('div', { class: 'small' }, h('span', { class: 'pill' }, statusLabel[u.status]), ' ', u.totp_enabled ? '2FA active' : '2FA non configurée',
           u.last_login_at ? ` · dernière connexion ${fmtDate(u.last_login_at)}` : '')),
-      h('div', { class: 'stack' }, fs, rs, flag('health_professional', 'Profession de santé'), flag('independent', 'Indépendant de l’association'), h('div', { class: 'row' },
+      h('div', { class: 'stack' }, fs, rs, flag('health_professional', 'Profession de santé'), flag('independent', 'Indépendant de l’association'), flag('dpd', 'Délégué à la protection des données'), h('div', { class: 'row' },
         u.status === 'actif' ? act('Suspendre', async () => { if (confirm(`Suspendre ${u.full_name} ? Ses sessions seront fermées.`)) { await api('PATCH', `/users/${u.id}`, { status: 'suspendu' }); viewMembers(); } }) : null,
         u.status === 'suspendu' && u.totp_enabled ? act('Réactiver', async () => { await api('PATCH', `/users/${u.id}`, { status: 'actif' }); viewMembers(); }) : null,
         act(u.status === 'invite' ? 'Renvoyer l’invitation' : 'Nouvelle invitation', async () => {
@@ -776,7 +780,7 @@ async function viewMembers(pendingLink = null) {
         u.totp_enabled ? act('Réinitialiser la 2FA', async () => { if (confirm(`À faire uniquement si ${u.full_name} a perdu son téléphone ET ses codes de secours, après avoir vérifié son identité. Continuer ?`)) { await api('POST', `/users/${u.id}/reset-2fa`); toast('Double authentification réinitialisée'); viewMembers(); } }) : null)));
   });
   shell('/admin/membres',
-    h('div', { class: 'row between' }, h('h1', {}, 'Membres et droits'), h('a', { class: 'btn secondary', href: '#/admin/journal' }, 'Journal et intégrité')),
+    h('div', { class: 'row between' }, h('h1', {}, 'Membres et droits'), h('div', { class: 'row' }, h('a', { class: 'btn secondary', href: '#/admin/conservation' }, 'Conservation'), h('a', { class: 'btn secondary', href: '#/admin/journal' }, 'Journal et intégrité'))),
     linkBox, h('div', { class: 'stack' }, cards), create);
   showLink(pendingLink);
 }
@@ -1007,6 +1011,8 @@ async function mailAvis(a, reload) {
     field('Objet', h('input', { name: 'subject', value: draft.subject, required: true, maxlength: 300 })),
     field('Message', h('textarea', { name: 'body', required: true, rows: 14 }, draft.body)),
     envois.length ? h('p', { class: 'alert warn small' }, `Déjà envoyé ${envois.length} fois (dernier envoi le ${fmtDate(envois[envois.length - 1].sent_at)} par ${envois[envois.length - 1].full_name}).`) : null,
+    h('p', { class: 'hint' }, 'Ajouté automatiquement sous votre message (lien personnel du porteur) :'),
+    h('pre', { class: 'small footer-preview' }, draft.receptionFooter),
     h('p', { class: 'hint' }, 'Le texte exact envoyé est conservé dans le dossier.'),
     h('button', { type: 'submit' }, 'Envoyer au porteur'));
   const dlg = modal('Envoyer l’avis signé au porteur', f);
@@ -1131,6 +1137,121 @@ function initialSection(ini) {
     ini.actes.length ? h('div', {}, h('h3', {}, 'Avis et actes'), actesList(ini.actes, false, () => {})) : null,
     h('h3', {}, 'Échanges du dossier initial'),
     ini.comments.length ? thread(0) : h('p', { class: 'muted small' }, 'Aucun échange.'));
+}
+
+// ===================== Réception de l'avis et délai d'appel =====================
+const BASIS = { confirmee: 'confirmée par le porteur', declaree: 'déclarée par le président', presumee: 'réputée (pas de confirmation)', non_transmis: 'avis non transmis' };
+function receptionCard(data, id) {
+  const a = data.appeal;
+  const expired = Date.now() > a.deadline;
+  const card = h('section', { class: 'card stack' }, h('h2', {}, 'Réception de l’avis et délai d’appel'),
+    h('dl', { class: 'kv' },
+      h('dt', {}, 'Premier envoi'), h('dd', {}, a.firstSent ? fmtDate(a.firstSent) : '—'),
+      h('dt', {}, 'Réception'), h('dd', {}, a.receivedAt ? `${fmtDate(a.receivedAt, false)} — ${BASIS[a.basis]}` : BASIS[a.basis]),
+      a.note ? [h('dt', {}, 'Justificatif'), h('dd', {}, a.note)] : null,
+      h('dt', {}, 'Délai d’appel'), h('dd', {}, data.appealOf ? h('span', {}, 'Appel formé : ', h('a', { href: `#/dossiers/${data.appealOf.id}` }, data.appealOf.reference)) : `jusqu’au ${fmtDate(a.deadline, false)}${expired ? ' (expiré)' : ''}`)),
+    a.basis === 'presumee' && a.receivedAt > Date.now() ? h('p', { class: 'hint' }, `Sans confirmation du porteur, l’avis sera réputé reçu le ${fmtDate(a.receivedAt, false)}.`) : null);
+  if (data.isAdmin && !['confirmee', 'declaree'].includes(a.basis)) {
+    const f = h('form', { class: 'stack' },
+      field('Date de réception', h('input', { type: 'date', name: 'date', required: true })),
+      field('Justificatif', h('input', { name: 'note', placeholder: 'Avis de réception postal n°…, courriel du porteur du…', required: true })),
+      h('button', { type: 'submit', class: 'secondary small' }, 'Enregistrer'));
+    f.addEventListener('submit', submitting(f, async (fd) => {
+      const [y, m, dd] = String(fd.get('date')).split('-').map(Number);
+      await api('POST', `/gov/actes/${a.avisId}/reception`, { date: new Date(y, m - 1, dd, 12).getTime(), note: fd.get('note') });
+      toast('Date de réception enregistrée'); viewDossier(id);
+    }));
+    card.append(h('details', {}, h('summary', { class: 'small' }, 'Déclarer une date de réception (accusé postal, réponse du porteur…)'), f));
+  }
+  return card;
+}
+
+// ===================== Conservation et destruction =====================
+function conservationCard(data, id) {
+  const r = data.retention;
+  const card = h('section', { class: 'card stack' }, h('h2', {}, 'Conservation'),
+    h('dl', { class: 'kv' },
+      h('dt', {}, 'Fin du projet'), h('dd', {}, r.projectEnd ? fmtDate(r.projectEnd, false) : 'non renseignée'),
+      h('dt', {}, 'Conservation'), h('dd', {}, r.until ? `jusqu’au ${fmtDate(r.until, false)} (fin du projet + ${r.years} ans${r.missing.length ? '' : ''})` : `à calculer : fin du projet à renseigner${r.missing.length > 1 || (r.missing[0] && r.missing[0] !== data.dossier.reference) ? ` (${r.missing.join(', ')})` : ''}`),
+      r.procedure ? [h('dt', {}, 'Destruction'), h('dd', {}, procLabel(r.procedure))] : null));
+  if (data.isAdmin || S.user.fonction === 'secretariat') {
+    const f = h('form', { class: 'row' }, h('input', { type: 'date', name: 'date', required: true, 'aria-label': 'Date de fin du projet' }), h('button', { type: 'submit', class: 'secondary small' }, r.projectEnd ? 'Modifier la fin du projet' : 'Renseigner la fin du projet'));
+    f.addEventListener('submit', submitting(f, async (fd) => {
+      const [y, m, dd] = String(fd.get('date')).split('-').map(Number);
+      await api('POST', `/gov/dossiers/${id}/fin-projet`, { date: new Date(y, m - 1, dd, 12).getTime() }); toast('Date enregistrée'); viewDossier(id);
+    }));
+    card.append(f, h('p', { class: 'hint' }, 'La fin du projet est indiquée par le rapport final du porteur (art. 32.4). Elle fait courir la durée de conservation (art. 34.3).'));
+  }
+  if (data.isAdmin && r.due && !(r.procedure && ['attente_dpd', 'avis_dpd_rendu'].includes(r.procedure.status))) {
+    card.append(actBtn('Proposer la destruction (avis du DPD demandé)', async () => {
+      if (!confirm('Proposer la destruction de ce dossier en fin de conservation ? Le délégué à la protection des données sera sollicité.')) return;
+      await api('POST', `/gov/dossiers/${r.rootId}/destruction`); toast('Destruction proposée'); go('/admin/conservation');
+    }, 'small'));
+  }
+  return card;
+}
+const PROC = { attente_dpd: 'en attente de l’avis du DPD', avis_dpd_rendu: 'avis du DPD rendu — décision du président attendue', executee: 'exécutée', abandonnee: 'abandonnée', execution: 'en cours' };
+const procLabel = (p) => `${PROC[p.status]}${p.dpd_opinion ? ` (avis du DPD : ${p.dpd_opinion})` : ''}${p.executed_at ? ` le ${fmtDate(p.executed_at, false)}` : ''}`;
+
+async function viewConservation() {
+  const { echeances, procedures, years } = await api('GET', '/gov/conservation');
+  const isAdmin = S.user.role === 'admin';
+  const reload = () => viewConservation();
+  const open = procedures.filter((p) => ['attente_dpd', 'avis_dpd_rendu'].includes(p.status));
+  const procCard = (p) => {
+    const box = h('div', { class: 'card stack' },
+      h('div', { class: 'row between' }, h('b', {}, `Dossier ${p.reference}`), h('span', { class: `pill ${p.status === 'executee' ? '' : 'new'}` }, PROC[p.status])),
+      h('p', { class: 'small muted' }, `Proposée le ${fmtDate(p.proposed_at, false)} · conservation expirée le ${fmtDate(p.retention_until, false)}`),
+      p.dpd_opinion ? h('p', { class: `alert ${p.dpd_opinion === 'favorable' ? 'ok' : 'warn'} small` }, `Avis du DPD (${p.dpd_name}, ${p.dpd_method === 'outil' ? 'signé dans l’outil' : 'document versé'}) : ${p.dpd_opinion}${p.dpd_motivation ? ` — ${p.dpd_motivation}` : ''}`) : null,
+      p.abandon_reason ? h('p', { class: 'small' }, `Motif d’abandon : ${p.abandon_reason}`) : null,
+      p.counts ? h('p', { class: 'small' }, `Détruits : ${p.counts.documents} document(s), ${p.counts.comments} commentaire(s), ${p.counts.votes} vote(s), ${p.counts.actes} acte(s). Avis conservés : ${p.counts.keptAvis.length}.`) : null);
+    if (p.status === 'attente_dpd' && S.user.dpd) {
+      const f = h('form', { class: 'stack' },
+        h('fieldset', { class: 'choices' }, h('legend', {}, 'Votre avis'), h('label', { class: 'check' }, h('input', { type: 'radio', name: 'opinion', value: 'favorable', required: true }), 'Favorable à la destruction'),
+          h('label', { class: 'check' }, h('input', { type: 'radio', name: 'opinion', value: 'defavorable' }), 'Défavorable')),
+        field('Motivation', h('textarea', { name: 'motivation' })),
+        field('Signer : code de votre application d’authentification', h('input', { name: 'code', class: 'otp', inputmode: 'numeric', maxlength: 11, required: true })),
+        h('button', { type: 'submit' }, 'Signer et rendre l’avis'));
+      f.addEventListener('submit', submitting(f, async (fd) => { await api('POST', `/gov/destructions/${p.id}/avis-dpd`, Object.fromEntries(fd)); toast('Avis enregistré'); reload(); }));
+      box.append(f);
+    }
+    if (p.status === 'attente_dpd' && isAdmin) {
+      const f = h('form', { class: 'stack' },
+        field('Nom du DPD', h('input', { name: 'dpd_name', required: true })),
+        field('Avis', h('select', { name: 'opinion' }, h('option', { value: 'favorable' }, 'Favorable'), h('option', { value: 'defavorable' }, 'Défavorable'))),
+        field('Motivation (résumé)', h('input', { name: 'motivation' })),
+        field('Avis écrit du DPD (PDF)', h('input', { type: 'file', name: 'file', accept: '.pdf,.jpg,.jpeg,.png', required: true })),
+        h('button', { type: 'submit', class: 'secondary small' }, 'Verser l’avis écrit'));
+      f.addEventListener('submit', submitting(f, async (fd) => { await api('POST', `/gov/destructions/${p.id}/avis-dpd-document`, fd); toast('Avis du DPD versé'); reload(); }));
+      box.append(h('details', {}, h('summary', { class: 'small' }, 'Le DPD n’a pas de compte : verser son avis écrit'), f));
+    }
+    if (p.status === 'avis_dpd_rendu' && isAdmin) {
+      const f = h('form', { class: 'stack' },
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'keep_avis', checked: true }), 'Conserver les avis signés au titre des archives de l’association'),
+        p.dpd_opinion === 'defavorable' ? field('Motivation de votre décision (avis du DPD défavorable)', h('textarea', { name: 'note', required: true })) : field('Note (facultative)', h('input', { name: 'note' })),
+        field('Signer la décision : code de votre application d’authentification', h('input', { name: 'code', class: 'otp', inputmode: 'numeric', maxlength: 11, required: true })),
+        h('p', { class: 'alert warn small' }, 'La destruction est définitive : documents, échanges, votes et données personnelles du dossier sont supprimés. Un certificat de destruction est conservé.'),
+        h('button', { type: 'submit', class: 'danger' }, 'Signer et détruire'));
+      f.addEventListener('submit', submitting(f, async (fd) => {
+        if (!confirm(`Détruire définitivement le dossier ${p.reference} ?`)) return;
+        const r = await api('POST', `/gov/destructions/${p.id}/decision`, { code: String(fd.get('code')).trim(), keep_avis: !!fd.get('keep_avis'), note: fd.get('note') || '' });
+        toast(`Dossier détruit — certificat produit (${r.shredded} fichier(s) effacé(s))`); reload();
+      }));
+      box.append(f);
+    }
+    if (isAdmin && ['attente_dpd', 'avis_dpd_rendu'].includes(p.status)) {
+      box.append(actBtn('Abandonner la procédure', async () => { const reason = prompt('Motif :'); if (!reason) return; await api('POST', `/gov/destructions/${p.id}/abandon`, { reason }); reload(); }));
+    }
+    return box;
+  };
+  shell('/admin/conservation', h('h1', {}, 'Conservation et destruction'),
+    h('p', { class: 'muted small' }, `Durée de conservation : fin du projet + ${years} ans (art. 34.3). Destruction dossier par dossier, sur décision du président, après avis du délégué à la protection des données (art. 34-11.2).`),
+    h('h2', {}, 'Procédures en cours'), open.length ? h('div', { class: 'stack' }, open.map(procCard)) : h('p', { class: 'muted' }, 'Aucune.'),
+    isAdmin ? h('h2', {}, 'Échéances') : null,
+    isAdmin ? (echeances.length ? h('div', { class: 'stack' }, echeances.map((e) => h('a', { class: 'dossier-item', href: `#/dossiers/${e.id}` }, h('div', { class: 'card row between' },
+      h('span', {}, h('b', {}, e.family.join(' + ')), e.missing.length ? ' — fin du projet à renseigner' : ` — conservation ${e.due ? 'expirée' : 'jusqu’au'} ${e.until ? fmtDate(e.until, false) : ''}`),
+      h('span', { class: `pill ${e.due ? 'new' : ''}` }, e.procedure ? PROC[e.procedure.status] : (e.due ? 'à détruire' : e.missing.length ? 'date manquante' : 'bientôt')))))) : h('p', { class: 'muted' }, 'Aucune échéance.')) : null,
+    h('h2', {}, 'Historique'), h('div', { class: 'stack' }, procedures.filter((p) => !open.includes(p)).map(procCard)));
 }
 
 render();

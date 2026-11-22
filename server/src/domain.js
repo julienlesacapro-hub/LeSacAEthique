@@ -40,6 +40,7 @@ const STATUSES = {
   incompetence: 'Incompétence — renvoi vers un CPP',
   suivi: 'Suivi du projet',
   clos: 'Clos',
+  detruit: 'Détruit en fin de conservation',
 };
 
 const ALLOWED_MIME = new Map([
@@ -163,7 +164,17 @@ function verifyIntegrity({ checkFiles = true } = {}) {
   const gov = require('./governance');
   const problems = [];
   let prev = GENESIS, n = 0;
-  for (const c of db.get().prepare('SELECT * FROM comments ORDER BY id').iterate()) {
+  // Commentaires existants et traces des commentaires détruits en fin de conservation, dans l'ordre de la chaîne
+  const tombs = db.get().prepare(`SELECT t.*, d.status AS dstatus FROM comment_tombstones t LEFT JOIN destructions d ON d.id = t.destruction_id`).all();
+  const rows = [...db.get().prepare('SELECT * FROM comments ORDER BY id').all(), ...tombs.map((t) => ({ ...t, id: t.comment_id, tombstone: true }))].sort((a, b) => a.id - b.id);
+  for (const c of rows) {
+    if (c.tombstone) {
+      if (c.prev_hash !== prev) problems.push(`Commentaire détruit #${c.id} : chaînage rompu`);
+      if (!sec.verifySignature(c.hash, c.signature)) problems.push(`Commentaire détruit #${c.id} : signature invalide`);
+      if (c.dstatus !== 'executee') problems.push(`Commentaire détruit #${c.id} : destruction non autorisée ou inachevée`);
+      prev = c.hash;
+      continue;
+    }
     n++;
     if (c.prev_hash !== prev) problems.push(`Commentaire #${c.id} : chaînage rompu (commentaire supprimé ou inséré ?)`);
     const h = sec.sha256(canonical(c));

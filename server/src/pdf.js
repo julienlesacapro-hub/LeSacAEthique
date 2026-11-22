@@ -251,4 +251,41 @@ async function cloture(d) {
   return done;
 }
 
-module.exports = { avis, pv, rapport, cloture };
+// ===================== CERTIFICAT DE DESTRUCTION =====================
+async function certificatDestruction(d) {
+  const { doc, done } = make(`Certificat de destruction ${d.fam[0].reference}`, 'Certificat de destruction');
+  header(doc, d.committee, d.longName, 'CERTIFICAT DE DESTRUCTION EN FIN DE CONSERVATION');
+  doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(15).text(`Dossier${d.fam.length > 1 ? 's' : ''} ${d.fam.map((x) => x.reference).join(' et ')}`, { align: 'center' }).moveDown(0.2);
+  doc.fillColor(GREY).font('Helvetica').fontSize(10).text(`Destruction exécutée le ${dFr(d.date, true)}`, { align: 'center' }).moveDown(0.8);
+  h(doc, 'Fondement', 11.5);
+  bullet(doc, d.fam.map((x) => `${x.reference}${x.kind === 'appel' ? ' (appel)' : ''} : déposé le ${dFr(x.created_at)}, clos le ${x.closed_at ? dFr(x.closed_at) : '—'}, fin du projet le ${dFr(x.project_end_at)}`), 9);
+  p(doc, `Durée de conservation : durée du projet augmentée de ${d.retentionYears} ans (règlement intérieur, art. 34.3), expirée le ${dFr(d.proc.retention_until)}.`, { size: 9.5 });
+  h(doc, 'Procédure (art. 34-11.2)', 11.5);
+  bullet(doc, [
+    `Proposition du président le ${dFr(d.proc.proposed_at)}.`,
+    `Avis du délégué à la protection des données (${d.proc.dpd_name}) : ${d.proc.dpd_opinion === 'favorable' ? 'favorable' : 'défavorable'}, le ${dFr(d.proc.dpd_at)}${d.proc.dpd_method === 'document' ? ', remis par écrit et versé dans l’outil' : ', rendu dans l’outil et signé par double authentification'}${d.proc.dpd_motivation ? ` — « ${d.proc.dpd_motivation} »` : ''}.`,
+    `Décision de ${d.by.full_name}, président du comité, le ${dFr(d.date, true)}, signée par double authentification.`,
+    `Contrôle d’intégrité n° ${d.check.checkId} préalable : conforme. Empreinte de référence : ${d.check.lastHash}.`,
+  ], 9);
+  h(doc, 'Éléments détruits', 11.5);
+  bullet(doc, [
+    `${d.counts.documents} document(s), ${d.counts.comments} commentaire(s), ${d.counts.votes} vote(s) (${d.counts.ballots} bulletin(s)), ${d.counts.actes} acte(s), ${d.counts.envois} courriel(s) envoyé(s) ;`,
+    'les données personnelles de la fiche du dossier (porteur, demandeur d’appel, titre, résumé) ;',
+    'l’historique du dossier et les notifications.',
+  ], 9);
+  p(doc, d.counts.keptAvis.length ? `Conservés au titre des archives de l’association : ${d.counts.keptAvis.map((a) => a.title).join(' ; ')}.` : 'Aucun avis n’a été conservé.', { size: 9.5 });
+  h(doc, 'Empreintes des éléments détruits', 11.5);
+  small(doc, 'Les empreintes SHA-256 permettent de prouver qu’un élément produit plus tard est, ou n’est pas, l’un des éléments détruits. Elles ne contiennent aucune donnée lisible.');
+  bullet(doc, [
+    ...d.docs.map((x) => `Document n° ${x.id} (pièce ${x.piece}, v${x.version}) : ${x.sha256}`),
+    ...d.delActes.map((a) => `Acte n° ${a.id} (${a.type}) : ${a.sha256}`),
+    ...d.comments.map((c) => `Commentaire n° ${c.id} : ${c.hash}`),
+  ], 7);
+  small(doc, 'Les fichiers étaient chiffrés (AES-256-GCM) ; ils ont été écrasés puis supprimés, et la base a été purgée (effacement sécurisé). Des copies chiffrées peuvent subsister dans les sauvegardes jusqu’à leur rotation.');
+  signatureBlock(doc, [{ t: `Le président du ${d.committee},` }, { t: d.by.full_name, bold: true }]);
+  footer(doc, `${d.committee} — Certificat de destruction ${d.fam[0].reference}`);
+  doc.end();
+  return done;
+}
+
+module.exports = { avis, pv, rapport, cloture, certificatDestruction };

@@ -218,3 +218,4 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .alert.appel { background: #f1edff; color: #3b2a85; }
 .comment.initial { background: var(--surface-2); }
 .doc-list .piece.copy { color: #5b3fc4; font-weight: 600; }
+.footer-preview { white-space: pre-wrap; background: var(--surface-2); padding: 8px 10px; border-radius: 8px; margin: 0; }

@@ -62,6 +62,18 @@ Saisissez votre adresse et votre mot de passe, puis le code à 6 chiffres de l'a
 - **Examen :** en séance plénière, avec des rapporteurs différents. L'outil refuse les anciens rapporteurs et la procédure simplifiée.
 - **Passé le délai :** la demande n'est pas reconnue comme un appel. Elle est enregistrée comme une nouvelle demande, qui doit être complète.
 
+## Réception de l'avis
+
+Le courriel au porteur contient un lien d'accusé de réception. Pour confirmer, le porteur ouvre le lien puis clique sur « Je confirme la réception ». Sans confirmation, le président peut déclarer une date de réception au vu d'un justificatif. À défaut, l'avis est réputé reçu 15 jours après l'envoi. Le délai d'appel de 3 mois court à partir de cette date. Il est affiché dans le dossier.
+
+## Conservation et destruction
+
+1. **Fin du projet.** Le président ou le secrétariat renseigne la date de fin du projet dans le dossier clos. Cette date figure dans le rapport final du porteur (art. 32.4).
+2. **Échéance.** La durée de conservation court jusqu'à la fin du projet + 10 ans. Le menu Administration → **Conservation** liste les échéances.
+3. **Proposition.** À l'échéance, le président propose la destruction.
+4. **Avis du DPD.** Le délégué à la protection des données rend son avis dans l'outil, en le signant avec son code de double authentification. S'il n'a pas de compte, le président verse son avis écrit.
+5. **Décision.** Le président décide, en signant avec son code. Les documents, échanges, votes et données personnelles sont alors supprimés. Les avis signés peuvent être conservés. Un certificat de destruction, sans donnée personnelle, est produit.
+
 ## Conflit d'intérêts (art. 4.2)
 
 Si vous êtes auteur, co-auteur ou investigateur du projet, si vous avez un lien hiérarchique direct avec le porteur ou un intérêt financier : cliquez sur **« Déclarer un conflit d'intérêts »**. Vous perdez alors l'accès au dossier et ne recevez plus ses notifications. La déclaration est définitive et visible des autres membres.

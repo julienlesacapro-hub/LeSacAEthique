@@ -585,6 +585,10 @@ async function closeDossier(dossier, by) {
 }
 
 // ===================== Courriel au porteur =====================
+function receptionFooter(link) {
+  return `— Accusé de réception —\nMerci de confirmer la réception de cet avis en ouvrant le lien ci-dessous, puis en cliquant sur « Je confirme la réception » :\n${link}\nÀ défaut de confirmation, l'avis est réputé reçu ${config.receptionPresumptionDays} jours après son envoi. Le délai d'appel de ${config.appealDelayMonths} mois court à compter de la réception.`;
+}
+
 function mailDraft(acte, by) {
   const d = q().prepare('SELECT * FROM dossiers WHERE id = ?').get(acte.dossier_id);
   const signedV = signedVersionOf(acte.id);
@@ -594,6 +598,7 @@ function mailDraft(acte, by) {
     subject: `Avis du ${config.committeeName} — ${meta.numero || d.reference}`,
     body: `Madame, Monsieur,\n\nVeuillez trouver ci-joint l'avis du ${config.committeeLongName} (${config.committeeName}) sur votre demande « ${d.title} », enregistrée sous la référence ${d.reference}.\n\nDécision : ${CHOICES[meta.decision] || ''}.\n\nCet avis ne vaut pas avis d'un comité de protection des personnes au sens de l'article L.1123-6 du code de la santé publique et ne dispense d'aucune formalité auprès de la CNIL.\n\nToute modification substantielle du projet doit être soumise au comité avant sa mise en œuvre.\n\nVeuillez agréer, Madame, Monsieur, l'expression de nos salutations distinguées.\n\n${by.full_name}\n${by.fonction === 'vice_president' ? 'Vice-président' : 'Président'} du ${config.committeeName}`,
     attachment: signedV ? { id: signedV.id, name: signedV.original_name, sha256: signedV.sha256, signature: JSON.parse(signedV.meta_json).signature } : null,
+    receptionFooter: receptionFooter(`${config.publicUrl}/api/public/reception/…`),
   };
 }
 
@@ -605,13 +610,18 @@ async function sendAvis(acte, by, { subject, body }) {
   if (!subj || !text) throw new RuleError('Objet et message obligatoires');
   const d = q().prepare('SELECT * FROM dossiers WHERE id = ?').get(acte.dossier_id);
   const content = readActe(signedV);
+  // Accusé de réception : lien personnel ajouté sous le message du président
+  const reception = require('./reception');
+  const token = reception.newToken();
+  const full = `${text}\n\n${receptionFooter(reception.linkFor(token))}`;
   await require('./mailer').send({
-    to: d.applicant_email, subject: subj, text, rawSubject: true, throwOnError: true,
+    to: d.applicant_email, subject: subj, text: full, rawSubject: true, throwOnError: true,
     attachments: [{ filename: signedV.original_name, content, contentType: acteMime(signedV) }],
   });
   const now = Date.now();
-  q().prepare(`INSERT INTO envois (acte_id, dossier_id, from_email, to_email, subject, body, attachment_name, attachment_sha256, sent_by, sent_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(signedV.id, d.id, config.smtp.from, d.applicant_email, subj, text, signedV.original_name, signedV.sha256, by.id, now);
+  const env = q().prepare(`INSERT INTO envois (acte_id, dossier_id, from_email, to_email, subject, body, attachment_name, attachment_sha256, sent_by, sent_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(signedV.id, d.id, config.smtp.from, d.applicant_email, subj, full.replace(token, '[jeton personnel]'), signedV.original_name, signedV.sha256, by.id, now);
+  reception.record({ acte, dossierId: d.id, envoiId: env.lastInsertRowid, token, sentAt: now });
   q().prepare('UPDATE actes SET sent_at = ? WHERE id = ?').run(now, signedV.id);
   event(d.id, by.id, 'transmission', `Avis signé adressé au porteur (${d.applicant_email}) sur décision de ${by.full_name}`);
   return { to: d.applicant_email, at: now };

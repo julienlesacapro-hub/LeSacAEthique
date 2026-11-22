@@ -86,6 +86,7 @@ router.patch('/:id', (req, res) => {
   }
   if (b.health_professional !== undefined) changes.health_professional = b.health_professional ? 1 : 0;
   if (b.independent !== undefined) changes.independent = b.independent ? 1 : 0;
+  if (b.dpd !== undefined) changes.dpd = b.dpd ? 1 : 0;
   const nextRole = changes.role || user.role; const nextFn = changes.fonction || user.fonction;
   if (nextRole === 'admin' && !adminAllowed(nextFn)) return res.status(400).json({ error: ADMIN_RULE() });
   if (b.full_name !== undefined) {

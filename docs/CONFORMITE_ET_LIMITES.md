@@ -34,7 +34,6 @@ Ce document dit ce que le logiciel garantit, ce qu'il ne garantit pas et ce qu'i
 
    **Pas encore couvert** :
    - questions écrites au porteur depuis l'application (art. 28.2) : le statut « questions au porteur » suspend bien le délai dans le rapport annuel, mais les échanges avec le porteur se font hors de l'outil ;
-   - destruction des dossiers en fin de conservation (art. 34-11.2 proposé) ;
    - délai minimal d'un vote électronique (art. 34-9.3 proposé) ;
    - réexamen avec des rapporteurs différents (art. 33.1) : le président doit y veiller.
 
@@ -67,3 +66,12 @@ L'outil traite des données personnelles : identité et coordonnées des porteur
 - informer les membres : charte et engagement de l'annexe 5.
 
 La base légale proposée dans le formulaire, l'intérêt légitime, est une proposition à faire valider par le DPD.
+
+## 5. Destruction en fin de conservation : ce qu'il faut savoir
+
+- Une suppression n'est possible, au niveau de la base, que pendant une destruction décidée et consignée. Hors de ce cadre, les déclencheurs SQL la refusent. Une suppression faite en contournant ces déclencheurs est détectée par le contrôle d'intégrité, car la chaîne des commentaires est rompue (testé).
+- La base efface physiquement les données supprimées (`secure_delete`) et son journal d'écriture est purgé. Les fichiers, déjà chiffrés, sont écrasés puis supprimés. **Limite :** sur un disque SSD, l'écrasement n'est pas garanti au niveau matériel. Le chiffrement de chaque fichier en limite la portée.
+- **Sauvegardes :** les copies chiffrées subsistent jusqu'à leur rotation (35 jours avec `deploy/backup.sh`).
+- **Procès-verbaux de séance :** un procès-verbal porte sur plusieurs dossiers, il n'est donc pas détruit avec un dossier. C'est au comité de fixer sa règle : les conserver comme archives, ou les détruire quand tous leurs dossiers l'ont été.
+- **Journal d'audit :** il mentionne la référence du dossier, jamais son contenu, et il est purgé après un an.
+- **Base existante :** la liste des types d'actes a été étendue (avis du DPD, certificat de destruction). Une base créée avec une version antérieure de l'outil doit être recréée avant la mise en production.

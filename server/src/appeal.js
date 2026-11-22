@@ -49,8 +49,9 @@ function evaluate({ reference, code, now = Date.now() }) {
   if (!meta.verifCode || norm(code) !== norm(meta.verifCode)) {
     return { status: 'code_invalide', parent, message: 'Le code de vérification ne correspond pas à celui imprimé sur l’avis. Il figure en bas de chaque page de l’avis.' };
   }
-  const deadline = addMonths(avis.created_at, config.appealDelayMonths);
-  if (now > deadline) return { status: 'hors_delai', parent, avis, deadline, message: `Le délai d’appel de ${config.appealDelayMonths} mois a expiré le ${new Date(deadline).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}.` };
+  const dl = require('./reception').appealDeadline(avis);
+  const deadline = dl.deadline;
+  if (now > deadline) return { status: 'hors_delai', parent, avis, deadline, message: `Le délai d’appel de ${config.appealDelayMonths} mois, qui courait de la réception de l’avis le ${new Date(dl.start).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} (${dl.label}), a expiré le ${new Date(deadline).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}.` };
   if (q().prepare("SELECT 1 FROM dossiers WHERE parent_id = ? AND kind = 'appel'").get(parent.id)) {
     return { status: 'deja_appel', parent, message: 'Un appel a déjà été formé contre cet avis : un seul appel est possible.' };
   }

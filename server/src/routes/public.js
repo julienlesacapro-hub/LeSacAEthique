@@ -17,6 +17,7 @@ const mailer = require('../mailer');
 const notify = require('../notify');
 const domain = require('../domain');
 const appeal = require('../appeal');
+const db = require('../db');
 
 const router = express.Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -149,6 +150,40 @@ router.post('/submissions', limiter, (req, res, next) => {
   }
   notify.newDossier(dossier).catch((e) => console.error(e));
   return undefined;
+});
+
+// ---------- Accusé de réception de l'avis par le porteur ----------
+// GET n'enregistre rien (les messageries ouvrent parfois les liens pour les analyser) :
+// seule la validation du bouton (POST) confirme la réception.
+const reception = require('../reception');
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function page(title, body) {
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
+<title>${esc(title)}</title><link rel="stylesheet" href="/formulaire/formulaire.css"></head><body><main class="cer-form-wrap">
+<header class="cer-head"><img src="/formulaire/logo.png" alt="" width="56" height="56"><div><h1>${esc(title)}</h1><p>${esc(config.committeeLongName)}</p></div></header>${body}</main></body></html>`;
+}
+const fr = (ms) => new Date(ms).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long', timeStyle: 'short' });
+const receptionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: config.isTest ? 1000 : 30, standardHeaders: 'draft-8', legacyHeaders: false });
+
+router.get('/reception/:token', receptionLimiter, (req, res) => {
+  const row = reception.byToken(req.params.token);
+  res.type('html');
+  if (!row) return res.status(404).send(page('Lien invalide', '<div class="cer-error">Ce lien d’accusé de réception est invalide.</div>'));
+  const d = db.get().prepare('SELECT reference FROM dossiers WHERE id = ?').get(row.dossier_id);
+  if (row.confirmed_at) return res.send(page('Réception déjà confirmée', `<div class="cer-done"><p>La réception de l’avis du dossier <strong>${esc(d.reference)}</strong> a été confirmée le ${esc(fr(row.confirmed_at))}.</p></div>`));
+  res.send(page('Accusé de réception', `<form class="cer-form" method="post"><fieldset><legend>Dossier ${esc(d.reference)}</legend>
+<p>En cliquant sur le bouton, vous confirmez avoir reçu l’avis du ${esc(config.committeeName)} relatif à ce dossier. La date et l’heure de votre confirmation sont enregistrées.</p>
+<p class="cer-hint">Le délai d’appel de ${config.appealDelayMonths} mois court à compter de la réception. À défaut de confirmation, l’avis est réputé reçu ${config.receptionPresumptionDays} jours après son envoi.</p></fieldset>
+<button type="submit" class="cer-submit">Je confirme la réception de l’avis</button></form>`));
+});
+
+router.post('/reception/:token', receptionLimiter, (req, res) => {
+  const r = reception.confirm(req.params.token, req.ip);
+  res.type('html');
+  if (r.status === 'invalide') return res.status(404).send(page('Lien invalide', '<div class="cer-error">Ce lien d’accusé de réception est invalide.</div>'));
+  const d = db.get().prepare('SELECT reference FROM dossiers WHERE id = ?').get(r.row.dossier_id);
+  audit.log('reception_avis_confirmee', { target: d.reference, ip: req.ip, details: r.status });
+  res.send(page('Réception confirmée', `<div class="cer-done"><p>${r.status === 'deja' ? 'La réception avait déjà été confirmée' : 'Merci. La réception'} de l’avis du dossier <strong>${esc(d.reference)}</strong> est enregistrée le ${esc(fr(r.row.confirmed_at))}.</p></div>`));
 });
 
 // Erreurs de téléversement (taille, nombre de fichiers)

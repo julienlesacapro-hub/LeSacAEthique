@@ -80,7 +80,7 @@ function isRecused(userId, dossierId) {
 function publicUser(u) {
   return {
     id: u.id, email: u.email, full_name: u.full_name, quality: u.quality, role: u.role, status: u.status,
-    fonction: u.fonction, health_professional: !!u.health_professional, independent: !!u.independent,
+    fonction: u.fonction, health_professional: !!u.health_professional, independent: !!u.independent, dpd: !!u.dpd,
     totp_enabled: !!u.totp_enabled, notify_email: !!u.notify_email, notify_comments: !!u.notify_comments,
     created_at: u.created_at, last_login_at: u.last_login_at,
     recovery_codes_left: JSON.parse(u.recovery_codes || '[]').length,

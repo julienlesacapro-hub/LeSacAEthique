@@ -21,6 +21,7 @@ const config = require('./config');
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
+PRAGMA secure_delete = ON;   -- le contenu supprimé est effacé physiquement du fichier
 
 CREATE TABLE IF NOT EXISTS users (
   id              INTEGER PRIMARY KEY,
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS users (
   locked_until    INTEGER NOT NULL DEFAULT 0,
   notify_email    INTEGER NOT NULL DEFAULT 1,
   notify_comments INTEGER NOT NULL DEFAULT 1,
+  dpd             INTEGER NOT NULL DEFAULT 0,      -- délégué à la protection des données (avis sur les destructions)
   created_at      INTEGER NOT NULL,
   created_by      INTEGER,
   last_login_at   INTEGER
@@ -99,6 +101,8 @@ CREATE TABLE IF NOT EXISTS dossiers (
   appeal_requester_email TEXT,
   appeal_reason         TEXT,
   related_reference     TEXT,              -- appel hors délai enregistré comme nouvelle demande
+  project_end_at        INTEGER,           -- fin du projet : point de départ de la durée de conservation (art. 34.3)
+  destroyed_at          INTEGER,           -- destruction en fin de conservation (art. 34-11.2)
   UNIQUE (year, seq)
 );
 
@@ -282,7 +286,7 @@ CREATE TABLE IF NOT EXISTS bulletins (
 -- Actes produits : avis (annexe 7), procès-verbaux, rapports annuels, et leurs versions signées
 CREATE TABLE IF NOT EXISTS actes (
   id            INTEGER PRIMARY KEY,
-  type          TEXT NOT NULL CHECK (type IN ('avis','pv','rapport_annuel','rapport_validation','cloture')),
+  type          TEXT NOT NULL CHECK (type IN ('avis','pv','rapport_annuel','rapport_validation','cloture','avis_dpd','certificat_destruction')),
   dossier_id    INTEGER REFERENCES dossiers(id),
   seance_id     INTEGER REFERENCES seances(id),
   scrutin_id    INTEGER REFERENCES scrutins(id),
@@ -315,6 +319,58 @@ CREATE TABLE IF NOT EXISTS envois (
   sent_at      INTEGER NOT NULL
 );
 
+-- Réception de l'avis par le porteur (point de départ du délai d'appel)
+CREATE TABLE IF NOT EXISTS receptions (
+  id           INTEGER PRIMARY KEY,
+  acte_id      INTEGER NOT NULL REFERENCES actes(id),   -- avis d'origine
+  dossier_id   INTEGER NOT NULL REFERENCES dossiers(id),
+  envoi_id     INTEGER REFERENCES envois(id),
+  token_hash   TEXT UNIQUE,
+  sent_at      INTEGER,
+  confirmed_at INTEGER,
+  method       TEXT CHECK (method IN ('lien','declaration')),
+  declared_by  INTEGER REFERENCES users(id),
+  note         TEXT NOT NULL DEFAULT '',
+  ip           TEXT NOT NULL DEFAULT ''
+);
+
+-- Destructions en fin de conservation (art. 34-11.2)
+CREATE TABLE IF NOT EXISTS destructions (
+  id              INTEGER PRIMARY KEY,
+  dossier_id      INTEGER NOT NULL REFERENCES dossiers(id),   -- dossier initial
+  family          TEXT NOT NULL,                              -- « ,id1,id2, » : dossier initial et appel
+  status          TEXT NOT NULL CHECK (status IN ('attente_dpd','avis_dpd_rendu','execution','executee','abandonnee')),
+  retention_until INTEGER NOT NULL,
+  proposed_by     INTEGER NOT NULL REFERENCES users(id),
+  proposed_at     INTEGER NOT NULL,
+  dpd_opinion     TEXT CHECK (dpd_opinion IN ('favorable','defavorable')),
+  dpd_motivation  TEXT,
+  dpd_by          INTEGER REFERENCES users(id),
+  dpd_name        TEXT,
+  dpd_method      TEXT CHECK (dpd_method IN ('outil','document')),
+  dpd_at          INTEGER,
+  dpd_acte_id     INTEGER REFERENCES actes(id),
+  decided_by      INTEGER REFERENCES users(id),
+  decided_at      INTEGER,
+  decision_note   TEXT,
+  keep_avis       INTEGER NOT NULL DEFAULT 1,
+  executed_at     INTEGER,
+  certificate_acte_id INTEGER REFERENCES actes(id),
+  counts_json     TEXT,
+  abandon_reason  TEXT
+);
+
+-- Commentaires détruits : seule l'empreinte reste, pour que la chaîne d'intégrité demeure vérifiable
+CREATE TABLE IF NOT EXISTS comment_tombstones (
+  comment_id     INTEGER PRIMARY KEY,
+  dossier_id     INTEGER NOT NULL,
+  prev_hash      TEXT NOT NULL,
+  hash           TEXT NOT NULL,
+  signature      TEXT NOT NULL,
+  destruction_id INTEGER NOT NULL REFERENCES destructions(id),
+  destroyed_at   INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_comments_dossier ON comments(dossier_id, id);
 CREATE INDEX IF NOT EXISTS idx_documents_dossier ON documents(dossier_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at);
@@ -324,11 +380,13 @@ CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
 CREATE TRIGGER IF NOT EXISTS comments_no_update BEFORE UPDATE ON comments
 BEGIN SELECT RAISE(ABORT, 'Un commentaire ne peut pas être modifié'); END;
 CREATE TRIGGER IF NOT EXISTS comments_no_delete BEFORE DELETE ON comments
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || (old.dossier_id) || ',') > 0)
 BEGIN SELECT RAISE(ABORT, 'Un commentaire ne peut pas être supprimé'); END;
 
 CREATE TRIGGER IF NOT EXISTS documents_no_update BEFORE UPDATE ON documents
 BEGIN SELECT RAISE(ABORT, 'Un document déposé ne peut pas être modifié'); END;
 CREATE TRIGGER IF NOT EXISTS documents_no_delete BEFORE DELETE ON documents
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || (old.dossier_id) || ',') > 0)
 BEGIN SELECT RAISE(ABORT, 'Un document déposé ne peut pas être supprimé'); END;
 
 CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit_log
@@ -342,9 +400,11 @@ BEGIN SELECT RAISE(ABORT, 'Le journal est en ajout seul'); END;
 CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON dossier_events
 BEGIN SELECT RAISE(ABORT, 'Historique en ajout seul'); END;
 CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON dossier_events
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || (old.dossier_id) || ',') > 0)
 BEGIN SELECT RAISE(ABORT, 'Historique en ajout seul'); END;
 
 CREATE TRIGGER IF NOT EXISTS rapporteurs_no_delete BEFORE DELETE ON rapporteurs
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || (old.dossier_id) || ',') > 0)
 BEGIN SELECT RAISE(ABORT, 'Une désignation ne peut pas être supprimée'); END;
 CREATE TRIGGER IF NOT EXISTS rapporteurs_update_once BEFORE UPDATE ON rapporteurs
 WHEN old.ended_at IS NOT NULL OR new.dossier_id IS NOT old.dossier_id OR new.user_id IS NOT old.user_id
@@ -362,6 +422,7 @@ CREATE TRIGGER IF NOT EXISTS seances_closed BEFORE UPDATE ON seances WHEN old.cl
 BEGIN SELECT RAISE(ABORT, 'Une séance close ne peut pas être modifiée'); END;
 
 CREATE TRIGGER IF NOT EXISTS scrutins_no_delete BEFORE DELETE ON scrutins
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || (old.dossier_id) || ',') > 0)
 BEGIN SELECT RAISE(ABORT, 'Un scrutin ne peut pas être supprimé'); END;
 CREATE TRIGGER IF NOT EXISTS scrutins_closed BEFORE UPDATE ON scrutins WHEN old.status <> 'ouvert'
 BEGIN SELECT RAISE(ABORT, 'Un scrutin clos ou annulé ne peut pas être modifié'); END;
@@ -369,17 +430,21 @@ BEGIN SELECT RAISE(ABORT, 'Un scrutin clos ou annulé ne peut pas être modifié
 CREATE TRIGGER IF NOT EXISTS electeurs_no_update BEFORE UPDATE ON scrutin_electeurs
 BEGIN SELECT RAISE(ABORT, 'Liste électorale figée'); END;
 CREATE TRIGGER IF NOT EXISTS electeurs_no_delete BEFORE DELETE ON scrutin_electeurs
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || ((SELECT dossier_id FROM scrutins WHERE id = old.scrutin_id)) || ',') > 0)
 BEGIN SELECT RAISE(ABORT, 'Liste électorale figée'); END;
 CREATE TRIGGER IF NOT EXISTS emargements_no_update BEFORE UPDATE ON emargements
 BEGIN SELECT RAISE(ABORT, 'Émargement définitif'); END;
 CREATE TRIGGER IF NOT EXISTS emargements_no_delete BEFORE DELETE ON emargements
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || ((SELECT dossier_id FROM scrutins WHERE id = old.scrutin_id)) || ',') > 0)
 BEGIN SELECT RAISE(ABORT, 'Émargement définitif'); END;
 CREATE TRIGGER IF NOT EXISTS bulletins_no_update BEFORE UPDATE ON bulletins
 BEGIN SELECT RAISE(ABORT, 'Un bulletin ne peut pas être modifié'); END;
 CREATE TRIGGER IF NOT EXISTS bulletins_no_delete BEFORE DELETE ON bulletins
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || ((SELECT dossier_id FROM scrutins WHERE id = old.scrutin_id)) || ',') > 0)
 BEGIN SELECT RAISE(ABORT, 'Un bulletin ne peut pas être supprimé'); END;
 
 CREATE TRIGGER IF NOT EXISTS actes_no_delete BEFORE DELETE ON actes
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || (old.dossier_id) || ',') > 0)
 BEGIN SELECT RAISE(ABORT, 'Un acte ne peut pas être supprimé'); END;
 CREATE TRIGGER IF NOT EXISTS actes_update_sent_only BEFORE UPDATE ON actes
 WHEN new.sha256 IS NOT old.sha256 OR new.storage_name IS NOT old.storage_name OR new.meta_json IS NOT old.meta_json
@@ -389,11 +454,28 @@ BEGIN SELECT RAISE(ABORT, 'Un acte ne peut pas être modifié'); END;
 CREATE TRIGGER IF NOT EXISTS envois_no_update BEFORE UPDATE ON envois
 BEGIN SELECT RAISE(ABORT, 'Un envoi ne peut pas être modifié'); END;
 CREATE TRIGGER IF NOT EXISTS envois_no_delete BEFORE DELETE ON envois
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || (old.dossier_id) || ',') > 0)
 BEGIN SELECT RAISE(ABORT, 'Un envoi ne peut pas être supprimé'); END;
+
+CREATE TRIGGER IF NOT EXISTS receptions_confirm_once BEFORE UPDATE ON receptions
+WHEN old.confirmed_at IS NOT NULL OR new.acte_id IS NOT old.acte_id OR new.dossier_id IS NOT old.dossier_id OR new.sent_at IS NOT old.sent_at
+BEGIN SELECT RAISE(ABORT, 'Une réception confirmée ne peut pas être modifiée'); END;
+CREATE TRIGGER IF NOT EXISTS receptions_no_delete BEFORE DELETE ON receptions
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || (old.dossier_id) || ',') > 0)
+BEGIN SELECT RAISE(ABORT, 'Une réception ne peut pas être supprimée'); END;
+CREATE TRIGGER IF NOT EXISTS destructions_no_delete BEFORE DELETE ON destructions
+BEGIN SELECT RAISE(ABORT, 'Une procédure de destruction ne peut pas être supprimée'); END;
+CREATE TRIGGER IF NOT EXISTS destructions_final BEFORE UPDATE ON destructions WHEN old.status IN ('executee','abandonnee')
+BEGIN SELECT RAISE(ABORT, 'Une procédure de destruction terminée ne peut pas être modifiée'); END;
+CREATE TRIGGER IF NOT EXISTS tombstones_no_update BEFORE UPDATE ON comment_tombstones
+BEGIN SELECT RAISE(ABORT, 'Trace de destruction immuable'); END;
+CREATE TRIGGER IF NOT EXISTS tombstones_no_delete BEFORE DELETE ON comment_tombstones
+BEGIN SELECT RAISE(ABORT, 'Trace de destruction immuable'); END;
 
 CREATE TRIGGER IF NOT EXISTS conflicts_no_update BEFORE UPDATE ON conflicts
 BEGIN SELECT RAISE(ABORT, 'Une déclaration de conflit ne peut pas être modifiée'); END;
 CREATE TRIGGER IF NOT EXISTS conflicts_no_delete BEFORE DELETE ON conflicts
+WHEN NOT EXISTS (SELECT 1 FROM destructions x WHERE x.status = 'execution' AND instr(x.family, ',' || (old.dossier_id) || ',') > 0)
 BEGIN SELECT RAISE(ABORT, 'Une déclaration de conflit ne peut pas être supprimée'); END;
 `;
 
@@ -405,6 +487,7 @@ const ADDED_COLUMNS = [
   ['dossiers', 'kind', "TEXT NOT NULL DEFAULT 'initiale'"], ['dossiers', 'parent_id', 'INTEGER'], ['dossiers', 'appeal_avis_id', 'INTEGER'],
   ['dossiers', 'appeal_role', 'TEXT'], ['dossiers', 'appeal_requester', 'TEXT'], ['dossiers', 'appeal_requester_email', 'TEXT'],
   ['dossiers', 'appeal_reason', 'TEXT'], ['dossiers', 'related_reference', 'TEXT'],
+  ['dossiers', 'project_end_at', 'INTEGER'], ['dossiers', 'destroyed_at', 'INTEGER'], ['users', 'dpd', 'INTEGER NOT NULL DEFAULT 0'],
   ['emargements', 'method', 'TEXT'], ['emargements', 'hash', 'TEXT'], ['emargements', 'signature', 'TEXT'],
   ['bulletins', 'hash', 'TEXT'], ['bulletins', 'signature', 'TEXT'],
 ];
@@ -413,6 +496,11 @@ function migrate(d) {
     const exists = d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
     if (!exists) continue;
     if (!d.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) d.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+  }
+  // Déclencheurs de suppression devenus conditionnels (destruction autorisée) : recréés par SCHEMA
+  for (const t of ['comments', 'documents', 'events', 'rapporteurs', 'scrutins', 'electeurs', 'emargements', 'bulletins', 'actes', 'envois', 'conflicts']) {
+    const row = d.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(`${t}_no_delete`);
+    if (row && !/destructions/.test(row.sql)) d.exec(`DROP TRIGGER ${t}_no_delete`);
   }
 }
 

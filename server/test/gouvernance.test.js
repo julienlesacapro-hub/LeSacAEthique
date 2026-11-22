@@ -273,7 +273,8 @@ test('courriel au porteur : brouillon modifiable, envoyé depuis l’adresse du 
   const m = mailer.outbox[0];
   assert.equal(m.to, 'porteur@hopital.test');
   assert.equal(m.subject, 'Votre avis — dossier A'); // objet exact, sans préfixe
-  assert.equal(m.text, 'Texte modifié par le président.');
+  assert.ok(m.text.startsWith('Texte modifié par le président.'));
+  assert.match(m.text, /api\/public\/reception\//); // lien d'accusé de réception ajouté
   assert.equal(m.from, config.smtp.from);
   assert.match(m.attachments[0].filename, /-signe\.(png|pdf)$/);
   const env = db.get().prepare('SELECT * FROM envois').all();
