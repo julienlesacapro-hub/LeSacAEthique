@@ -10,6 +10,8 @@ const audit = require('../audit');
 const notify = require('../notify');
 const domain = require('../domain');
 const { requireSession, requireRole, isRecused } = require('../auth');
+const gov = require('../governance');
+const manager = (req, res, next) => (gov.canManageDossiers(req.user) ? next() : res.status(403).json({ error: 'Droits insuffisants' }));
 
 const router = express.Router();
 const q = () => db.get();
@@ -65,10 +67,15 @@ router.get('/:id', (req, res) => {
     ON CONFLICT(user_id, dossier_id) DO UPDATE SET last_read_comment_id = excluded.last_read_comment_id`).run(req.user.id, d.id, lastId);
   q().prepare('UPDATE notifications SET read_at = ? WHERE user_id = ? AND dossier_id = ? AND read_at IS NULL').run(Date.now(), req.user.id, d.id);
   audit.fromReq(req, 'dossier_consulte', d.reference);
+  const scrutins = q().prepare('SELECT * FROM scrutins WHERE dossier_id = ? ORDER BY id').all(d.id).map((sc) => gov.scrutinView(sc, req.user));
+  const actes = q().prepare('SELECT * FROM actes WHERE dossier_id = ? ORDER BY id').all(d.id).map(gov.acteView);
   res.json({
     dossier: d, documents, comments, events, conflicts,
+    rapporteurs: gov.activeRapporteurs(d.id).map((r) => ({ user_id: r.user_id, full_name: r.full_name, quality: r.quality, health_professional: !!r.health_professional, designated_at: r.designated_at })),
+    scrutins, actes,
     lastReadCommentId: prev ? prev.last_read_comment_id : 0,
-    canWrite: req.user.role !== 'lecture', isAdmin: req.user.role === 'admin',
+    canWrite: req.user.role !== 'lecture', isAdmin: req.user.role === 'admin', canManage: gov.canManageDossiers(req.user),
+    isRapporteur: gov.isRapporteur(req.user.id, d.id), isMember: [...gov.VOTING, 'suppleant'].includes(req.user.fonction),
   });
 });
 
@@ -107,7 +114,13 @@ router.post('/:id/comments', requireRole('ecriture'), async (req, res) => {
     if (!doc) return res.status(400).json({ error: 'Document introuvable' });
     documentId = doc.id;
   }
-  const c = domain.addComment({ dossierId: d.id, parentId, documentId, author: req.user, body });
+  let kind = null;
+  if (b.as_rapport) {
+    if (!gov.isRapporteur(req.user.id, d.id)) return res.status(403).json({ error: 'Seul un rapporteur désigné peut publier un rapport' });
+    if (parentId) return res.status(400).json({ error: 'Un rapport est un message principal, pas une réponse' });
+    kind = 'rapport';
+  }
+  const c = domain.addComment({ dossierId: d.id, parentId, documentId, author: req.user, body, kind });
   q().prepare('UPDATE dossiers SET updated_at = ? WHERE id = ?').run(Date.now(), d.id);
   q().prepare(`INSERT INTO reads (user_id, dossier_id, last_read_comment_id) VALUES (?,?,?)
     ON CONFLICT(user_id, dossier_id) DO UPDATE SET last_read_comment_id = excluded.last_read_comment_id`).run(req.user.id, d.id, c.id);
@@ -130,17 +143,19 @@ router.post('/:id/conflicts', (req, res) => {
   q().prepare('INSERT INTO conflicts (dossier_id, user_id, reason, declared_at) VALUES (?,?,?,?)').run(d.id, req.user.id, reason.slice(0, 1000), Date.now());
   q().prepare('INSERT INTO dossier_events (dossier_id, at, user_id, type, details) VALUES (?,?,?,?,?)')
     .run(d.id, Date.now(), req.user.id, 'deport', 'Déport pour conflit d’intérêts');
+  gov.endRapporteur(d.id, req.user.id, req.user.id, 'déport pour conflit d’intérêts');
   audit.fromReq(req, 'deport_declare', d.reference);
   res.json({ ok: true });
 });
 
 // ----- Administration du dossier -----
-router.patch('/:id', requireRole('admin'), (req, res) => {
+router.patch('/:id', manager, (req, res) => {
   const d = loadDossier(req, res); if (!d) return;
   const b = req.body || {};
   const changes = [];
   if (b.status !== undefined) {
     if (!domain.STATUSES[b.status]) return res.status(400).json({ error: 'Statut inconnu' });
+    if (!gov.isAdmin(req.user) && (b.status.startsWith('avis_') || b.status === 'incompetence')) return res.status(403).json({ error: 'Seul le président peut enregistrer un avis' });
     if (b.status !== d.status) changes.push(['status', b.status, `Statut : ${domain.STATUSES[b.status]}`]);
   }
   if (b.procedure !== undefined) {
@@ -152,15 +167,15 @@ router.patch('/:id', requireRole('admin'), (req, res) => {
   q().transaction(() => {
     for (const [k, v, label] of changes) {
       q().prepare(`UPDATE dossiers SET ${k} = ?, updated_at = ? WHERE id = ?`).run(v, now, d.id);
-      q().prepare('INSERT INTO dossier_events (dossier_id, at, user_id, type, details) VALUES (?,?,?,?,?)')
-        .run(d.id, now, req.user.id, k, label + (note ? ` — ${note}` : ''));
+      q().prepare('INSERT INTO dossier_events (dossier_id, at, user_id, type, value, details) VALUES (?,?,?,?,?,?)')
+        .run(d.id, now, req.user.id, k === 'status' ? 'status' : k, v, label + (note ? ` — ${note}` : ''));
     }
   })();
   if (changes.length) audit.fromReq(req, 'dossier_modifie', d.reference, Object.fromEntries(changes.map(([k, v]) => [k, v])));
   res.json({ dossier: domain.getDossier(d.id) });
 });
 
-router.post('/:id/documents', requireRole('admin'), upload.array('files'), async (req, res) => {
+router.post('/:id/documents', manager, upload.array('files'), async (req, res) => {
   const d = loadDossier(req, res); if (!d) return;
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ error: 'Aucun fichier' });
@@ -174,7 +189,7 @@ router.post('/:id/documents', requireRole('admin'), upload.array('files'), async
 });
 
 // Création manuelle (demande reçue par courrier ou par courriel).
-router.post('/', requireRole('admin'), (req, res) => {
+router.post('/', manager, (req, res) => {
   const b = req.body || {};
   for (const k of ['title', 'applicant_name', 'applicant_email']) {
     if (!String(b[k] || '').trim()) return res.status(400).json({ error: `Champ requis : ${k}` });

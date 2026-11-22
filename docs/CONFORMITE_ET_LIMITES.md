@@ -22,13 +22,26 @@ Ce document dit ce que le logiciel garantit, ce qu'il ne garantit pas et ce qu'i
 
 ## 2. Limites à connaître
 
-1. **La « signature » des commentaires n'est pas une signature électronique qualifiée.** L'auteur est identifié par son authentification forte. Le serveur signe ensuite chaque commentaire avec sa propre clé. Au sens du règlement (UE) n° 910/2014 (eIDAS), c'est une *signature électronique* simple (art. 3, 10°) assortie d'une preuve d'intégrité. Ce n'est pas une signature *avancée* : l'art. 26 exige que les données de création soient sous le contrôle exclusif du signataire, et ici la clé appartient au serveur. Les avis du comité, signés par le président (art. 31.3), restent des documents distincts.
-2. **Un administrateur système qui contrôle à la fois le serveur et ses clés pourrait réécrire toute la chaîne.** Pour s'en prémunir, notez régulièrement la « dernière empreinte » affichée par `npm run verify` dans un document externe, par exemple le procès-verbal de séance. Toute réécriture antérieure deviendra alors détectable.
+1. **La « signature » des commentaires n'est pas une signature électronique qualifiée** (pour les avis et les procès-verbaux, voir [SIGNATURE_QUALIFIEE.md](SIGNATURE_QUALIFIEE.md)). L'auteur est identifié par son authentification forte. Le serveur signe ensuite chaque commentaire avec sa propre clé. Au sens du règlement (UE) n° 910/2014 (eIDAS), c'est une *signature électronique* simple (art. 3, 10°) assortie d'une preuve d'intégrité. Ce n'est pas une signature *avancée* : l'art. 26 exige que les données de création soient sous le contrôle exclusif du signataire, et ici la clé appartient au serveur. Les avis du comité, signés par le président (art. 31.3), restent des documents distincts.
+2. **Un administrateur système qui contrôle à la fois le serveur et ses clés pourrait réécrire toute la chaîne.** L'outil inscrit désormais l'empreinte de référence dans chaque procès-verbal et chaque avis. Une copie de ces actes conservée hors de l'outil (art. 34-7.3 proposé) rend donc toute réécriture détectable.
+
+   **Secret du vote.** Le bulletin secret est enregistré sans nom et sans horodatage, avec un identifiant aléatoire. Le secret est garanti vis-à-vis des membres et du président. Il ne l'est pas totalement vis-à-vis d'un administrateur système déterminé, qui pourrait rapprocher l'émargement du bulletin par les journaux du serveur. D'où l'engagement prévu à l'art. 34-2.2 d.
 3. **« Jamais supprimés » se heurte aux durées de conservation.** Le règlement fixe la conservation des dossiers à la durée du projet augmentée de dix ans (art. 34.3). Le RGPD interdit de conserver des données personnelles au-delà du nécessaire (art. 5.1.e). Le logiciel ne prévoit pas encore de purge des dossiers échus. Il faudra une procédure d'archivage ou de destruction, validée par le DPD, appliquée par dossier entier et tracée.
 4. **Notifications push des applications natives.** Le Web Push fonctionne dans les navigateurs et dans la PWA installée (iOS/iPadOS 16.4 ou ultérieur, après ajout à l'écran d'accueil, source : webkit.org/blog/13878). Les applications Capacitor ne reçoivent pas de push natif : il faudrait intégrer Firebase Cloud Messaging et APNs. Les membres y reçoivent les courriels et voient le compteur dans l'application.
 5. **Magasins d'applications.** Publier sur l'App Store demande l'Apple Developer Program, payant chaque année (developer.apple.com/programs). Une application qui se contente d'afficher un site peut être refusée (règle 4.2 « Minimum Functionality » des App Review Guidelines). Pour un usage interne, la **PWA** est la solution la plus simple et sans coût. À défaut : distribution privée (Apple Business Manager, *custom apps*) ou TestFlight. Pour Android, l'APK peut s'installer directement ; Google Play exige des frais d'inscription uniques. Les tarifs sont à vérifier sur les sites officiels au moment de la décision.
 6. **Non testé dans cet environnement** : la construction des images Docker, des installateurs Electron et des projets Android et iOS. Il manquait Docker, les SDK Android et iOS, et l'accès aux binaires Electron. Le serveur, l'interface web et le formulaire ont été testés : 17 tests automatisés, plus un parcours complet dans un navigateur sur ordinateur et sur iPhone émulé.
-7. **Non couvert par cette version** : désignation des rapporteurs (art. 28.1), questions écrites au porteur depuis l'application (art. 28.2), votes et procès-verbaux (art. 29), génération de l'avis selon l'annexe 7, rapport annuel (art. 34.2). Le modèle de données permet de les ajouter.
+7. **Couvert depuis la version 2** : rapporteurs, votes, procès-verbaux, avis selon l'annexe 7, rapport annuel, version signée des actes.
+
+   **Pas encore couvert** :
+   - questions écrites au porteur depuis l'application (art. 28.2) : le statut « questions au porteur » suspend bien le délai dans le rapport annuel, mais les échanges avec le porteur se font hors de l'outil ;
+   - destruction des dossiers en fin de conservation (art. 34-11.2 proposé) ;
+   - délai minimal d'un vote électronique (art. 34-9.3 proposé) ;
+   - réexamen avec des rapporteurs différents (art. 33.1) : le président doit y veiller.
+
+8. **Interprétations retenues par le logiciel**, à confirmer dans le règlement intérieur (voir les propositions) :
+   - la majorité de l'art. 29.3 est celle des suffrages exprimés ;
+   - le quorum de l'art. 29.2 est calculé sur tous les membres votants en exercice, y compris ceux qui se sont déportés. Si les déports empêchent d'atteindre le quorum, l'art. 4.3 s'applique (appel à un expert extérieur) ;
+   - en procédure simplifiée, l'avis exige l'accord du président et du rapporteur.
 
 ## 3. Modifications à apporter au règlement intérieur (projet v8)
 
@@ -36,10 +49,11 @@ Ces points découlent de la lecture du projet v8. Ils relèvent de la décision 
 
 | Article | Rédaction actuelle | Modification à prévoir |
 |---|---|---|
+| **Statuts**, art. 18, 19, 21, 23, 24 | « CERMEDHYP » | Le renommage exige d'abord une modification des statuts par l'assemblée générale extraordinaire : voir [PROPOSITION_REGLEMENT_INTERIEUR.md](PROPOSITION_REGLEMENT_INTERIEUR.md) |
 | Art. 2, Titre IV, annexes 3 et 7 | « CERMEDHYP », « Comité d'éthique de la recherche en médecine hyperbare et de la plongée » | Renommer « CER-PROMEDNAV » partout. Vérifier si l'intitulé limité à la « médecine hyperbare et de la plongée » reste voulu : l'objet des statuts couvre plus largement le naval et le maritime |
 | Art. 31.3 | Référence `[CERMEDHYP-AAAA-NNN]` | `CER-PROMEDNAV-AAAA-NNN` (format déjà appliqué par le logiciel) |
 | Art. 26.2 | Adresse dédiée `[cermedhyp@...]` | Adresse du secrétariat du CER-PROMEDNAV |
-| Art. 6.1 | « Les échanges […] passent par voie électronique, à l'adresse contact@promednav.com » | Désigner l'outil LeSacAEthique comme canal des échanges entre membres du comité, et le formulaire comme voie de saisine |
+| Art. 6.1 et nouveau Titre IV bis | « Les échanges […] passent par voie électronique, à l'adresse contact@promednav.com » | Rédactions proposées dans [PROPOSITION_REGLEMENT_INTERIEUR.md](PROPOSITION_REGLEMENT_INTERIEUR.md) |
 | Art. 27.2 / annexe 3 | Dossier de saisine | Préciser le dépôt en ligne et l'attestation d'absence de données de santé identifiantes |
 | Art. 40 | Journalisation | Le logiciel conserve les journaux un an ; à reporter dans la politique de sécurité |
 | Art. 34.3 | Conservation | Définir la procédure de fin de conservation (point 2.3 ci-dessus) |

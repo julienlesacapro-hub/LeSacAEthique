@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * Crée le premier administrateur (à exécuter sur le serveur).
+ * Crée le premier administrateur de l'outil : le président du comité (à exécuter sur le serveur).
  *   npm run create-admin -- --email president@exemple.fr --name "Prénom Nom" --quality "Président du CER"
  * Affiche le lien d'activation (mot de passe + double authentification).
  */
@@ -21,10 +21,11 @@ const email = args.email.trim().toLowerCase();
 let user = db.get().prepare('SELECT * FROM users WHERE email = ?').get(email);
 if (!user) {
   const r = db.get().prepare("INSERT INTO users (email, full_name, quality, role, status, created_at) VALUES (?,?,?,'admin','invite',?)")
-    .run(email, args.name, args.quality || 'Administrateur', Date.now());
+    .run(email, args.name, args.quality || 'Président du comité', Date.now());
+  db.get().prepare("UPDATE users SET fonction = 'president' WHERE email = ?").run(email);
   user = db.get().prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid);
 } else {
-  db.get().prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(user.id);
+  db.get().prepare("UPDATE users SET role = 'admin', fonction = 'president' WHERE id = ?").run(user.id);
 }
 const raw = sec.randomToken();
 db.get().prepare("INSERT INTO tokens (user_id, type, token_hash, expires_at) VALUES (?, 'invite', ?, ?)")

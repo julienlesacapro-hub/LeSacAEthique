@@ -90,8 +90,8 @@ const createDossier = (data) => db.get().transaction(() => {
     reference, year, n, data.title, data.applicant_name, data.applicant_email, data.applicant_affiliation || '',
     data.investigator || '', data.qualification || 'RNIPH', data.qualification_reason || '', data.summary || '',
     data.funding || '', data.procedure === 'simplifiee' ? 'simplifiee' : 'ordinaire', 'depose', data.source || 'site', now, now);
-  db.get().prepare('INSERT INTO dossier_events (dossier_id, at, user_id, type, details) VALUES (?,?,?,?,?)')
-    .run(r.lastInsertRowid, now, data.created_by || null, 'creation', `Dépôt (${data.source || 'site'})`);
+  db.get().prepare('INSERT INTO dossier_events (dossier_id, at, user_id, type, value, details) VALUES (?,?,?,?,?,?)')
+    .run(r.lastInsertRowid, now, data.created_by || null, 'status', 'depose', `Dépôt (${data.source || 'site'})`);
   return getDossier(r.lastInsertRowid);
 }).immediate();
 
@@ -129,13 +129,13 @@ function canonical(c) {
   ]);
 }
 
-const addComment = ({ dossierId, parentId = null, documentId = null, author, body }) => db.get().transaction(() => {
+const addComment = ({ dossierId, parentId = null, documentId = null, author, body, kind = null }) => db.get().transaction(() => {
   const last = db.get().prepare('SELECT hash FROM comments ORDER BY id DESC LIMIT 1').get();
   const c = {
     dossier_id: dossierId,
     parent_id: parentId,
     document_id: documentId,
-    kind: parentId ? 'reponse' : 'commentaire',
+    kind: kind || (parentId ? 'reponse' : 'commentaire'),
     author_id: author.id,
     author_name: author.full_name,
     author_quality: author.quality || '',
@@ -154,6 +154,7 @@ const addComment = ({ dossierId, parentId = null, documentId = null, author, bod
 
 /** Vérifie la chaîne complète des commentaires et l'intégrité des fichiers. */
 function verifyIntegrity({ checkFiles = true } = {}) {
+  const gov = require('./governance');
   const problems = [];
   let prev = GENESIS, n = 0;
   for (const c of db.get().prepare('SELECT * FROM comments ORDER BY id').iterate()) {
@@ -171,10 +172,35 @@ function verifyIntegrity({ checkFiles = true } = {}) {
       try { readDocument(d); } catch (e) { problems.push(`Document #${d.id} (${d.original_name}) : ${e.message}`); }
     }
   }
-  return { ok: problems.length === 0, comments: n, documents: files, lastHash: prev, problems };
+  // Actes (avis, procès-verbaux, rapports) : empreinte du fichier stocké
+  let actes = 0;
+  if (checkFiles) {
+    for (const a of db.get().prepare('SELECT * FROM actes ORDER BY id').iterate()) {
+      actes++;
+      try { gov.readActe(a); } catch (e) { problems.push(`Acte #${a.id} (${a.original_name}) : ${e.message}`); }
+    }
+  }
+  // Scrutins clos : le décompte doit correspondre aux bulletins conservés
+  let ballots = 0;
+  for (const sc of db.get().prepare("SELECT * FROM scrutins WHERE status = 'clos' ORDER BY id").iterate()) {
+    const t = gov.tallyOf(sc.id);
+    ballots += t.ballots;
+    if (t.hash !== sc.tally_hash) problems.push(`Scrutin #${sc.id} : bulletins modifiés, ajoutés ou supprimés après la clôture`);
+  }
+  const { ob } = db.get().prepare("SELECT COUNT(*) ob FROM bulletins b JOIN scrutins s ON s.id = b.scrutin_id WHERE s.status = 'ouvert'").get();
+  ballots += ob;
+  return { ok: problems.length === 0, comments: n, documents: files, actes, ballots, lastHash: prev, problems };
+}
+
+/** Exécute un contrôle et le consigne (preuve opposable du contrôle préalable). */
+function recordIntegrityCheck(userId, purpose) {
+  const r = verifyIntegrity();
+  const ins = db.get().prepare(`INSERT INTO integrity_checks (at, user_id, purpose, ok, comments, documents, ballots, actes, last_hash, problems)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(Date.now(), userId, purpose, r.ok ? 1 : 0, r.comments, r.documents, r.ballots, r.actes, r.lastHash, JSON.stringify(r.problems));
+  return { ...r, checkId: ins.lastInsertRowid };
 }
 
 module.exports = {
   PIECES, STATUSES, checkFile, createDossier, getDossier, addDocument, readDocument, addComment,
-  verifyIntegrity, canonical, GENESIS, safeName,
+  verifyIntegrity, recordIntegrityCheck, canonical, GENESIS, safeName,
 };

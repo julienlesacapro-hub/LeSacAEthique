@@ -24,8 +24,8 @@ function getTransport() {
   return transport;
 }
 
-async function send({ to, subject, text }) {
-  const msg = { from: config.smtp.from, to, subject: `[${config.committeeName}] ${subject}`, text };
+async function send({ to, subject, text, attachments }) {
+  const msg = { from: config.smtp.from, to, subject: `[${config.committeeName}] ${subject}`, text, attachments };
   const t = getTransport();
   if (!t) {
     outbox.push(msg);

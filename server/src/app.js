@@ -71,6 +71,7 @@ function createApp() {
   app.use('/api/dossiers', require('./routes/dossiers'));
   app.use('/api/notifications', require('./routes/notifications'));
   app.use('/api/public', require('./routes/public'));
+  app.use('/api/gov', require('./routes/gouvernance'));
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Ressource inconnue' }));
 

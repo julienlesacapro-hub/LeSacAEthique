@@ -61,7 +61,7 @@ Deux possibilités :
            style="width:100%;min-height:1800px;border:0"></iframe>
    ```
    Le domaine du site doit figurer dans `PUBLIC_FORM_ORIGINS`.
-2. **Copie sur le site.** Copiez `formulaire-saisine.html`, `formulaire.js`, `formulaire.css` et `logo.svg`, puis remplacez `data-endpoint="/api/public/submissions"` par `https://cer.promednav.fr/api/public/submissions`.
+2. **Copie sur le site.** Copiez `formulaire-saisine.html`, `formulaire.js`, `formulaire.css` et `logo.png`, puis remplacez `data-endpoint="/api/public/submissions"` par `https://cer.promednav.fr/api/public/submissions`.
 
 Dans les deux cas, le site ne stocke rien : les fichiers partent directement vers le serveur du comité.
 

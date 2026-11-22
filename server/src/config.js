@@ -30,6 +30,14 @@ function build() {
     committeeName: env('COMMITTEE_NAME', 'CER-PROMEDNAV'),
     committeeLongName: env('COMMITTEE_LONG_NAME', "Comité d'éthique de la recherche de PROMEDNAV"),
     referencePrefix: env('REFERENCE_PREFIX', 'CER-PROMEDNAV'),
+    associationName: env('ASSOCIATION_NAME', 'PROMEDNAV'),
+    avisLieu: env('AVIS_LIEU', 'Toulon'),                 // « Fait à Toulon » (annexe 7)
+    irbIorg: env('IRB_IORG', ''),                          // n° IORG si enregistrement OHRP
+    irbNumber: env('IRB_NUMBER', ''),                      // n° IRB si enregistrement OHRP
+    avisValidityMonths: parseInt(env('AVIS_VALIDITY_MONTHS', '36'), 10), // art. 31.4 : trois ans au plus
+    avisDelayDays: parseInt(env('AVIS_DELAY_DAYS', '30'), 10),           // art. 31.2
+    // Fonctions autorisées à détenir le rôle administrateur de l'outil
+    adminFunctions: (env('ADMIN_FUNCTIONS', 'president,vice_president')).split(',').map((s) => s.trim()).filter(Boolean),
     port: parseInt(env('PORT', '8443'), 10),
     host: env('HOST', '127.0.0.1'),
     publicUrl: env('PUBLIC_URL', 'http://localhost:8443').replace(/\/$/, ''),

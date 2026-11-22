@@ -26,6 +26,17 @@ Saisissez votre adresse et votre mot de passe, puis le code à 6 chiffres de l'a
 - **Un commentaire publié est définitif.** Vous ne pouvez ni le modifier ni le supprimer. Pour corriger, publiez un complément.
 - Vos commentaires portent votre nom et votre qualité, tels que l'administrateur les a enregistrés. Ils sont horodatés et signés.
 
+## Rapporteurs, votes et avis
+
+- **Rapporteurs.** Le président désigne deux rapporteurs, dont au moins un n'exerce pas une profession de santé. Un rapporteur peut cocher « Publier comme mon rapport » en rédigeant son analyse.
+- **Voter.** Quand un vote est ouvert, vous êtes notifié. Dans le dossier, choisissez votre position et motivez-la si elle diverge. Le vote est **définitif**. En cas de bulletin secret, votre nom n'est pas enregistré avec le bulletin. Le résultat n'apparaît qu'à la clôture.
+- **Suppléants.** Un suppléant vote seulement s'il a été désigné pour remplacer un titulaire. Le titulaire et son suppléant ne votent pas tous les deux.
+- **Procédure simplifiée** (art. 30). Le président et un rapporteur se prononcent, sans possibilité d'avis défavorable. Tout membre peut cliquer sur « Demander l'examen en séance plénière ».
+- **Clôture du vote** (président). L'outil vérifie d'abord que rien n'a été modifié. Si ce contrôle échoue, le vote n'est pas validé.
+- **Avis** (président). L'outil produit le PDF bilingue selon l'annexe 7. Le président le signe avec son certificat qualifié, dépose la version signée, puis la transmet au porteur.
+- **Séances.** Le président ou le secrétariat programme les séances. À la clôture de la séance, le procès-verbal est produit automatiquement.
+- **Rapport annuel.** Menu « Séances » → « Rapport annuel ».
+
 ## Conflit d'intérêts (art. 4.2)
 
 Si vous êtes auteur, co-auteur ou investigateur du projet, si vous avez un lien hiérarchique direct avec le porteur ou un intérêt financier : cliquez sur **« Déclarer un conflit d'intérêts »**. Vous perdez alors l'accès au dossier et ne recevez plus ses notifications. La déclaration est définitive et visible des autres membres.

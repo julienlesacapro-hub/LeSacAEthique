@@ -47,6 +47,7 @@ const ICONS = {
   user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2|M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
   shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
   lock: 'M5 11h14v10H5z|M8 11V7a4 4 0 1 1 8 0v4',
+  calendar: 'M4 6h16v14H4z|M4 10h16|M8 3v4|M16 3v4',
 };
 
 function toast(msg) {
@@ -114,8 +115,10 @@ async function render() {
       }
       refreshUnread(); startPolling(); registerSW();
     }
+    if (!S.gov) { try { S.gov = await api('GET', '/gov/meta'); } catch { S.gov = { fonctions: {}, choices: {}, voting: [] }; } }
   }
   const m = path.match(/^\/dossiers\/(\d+)$/);
+  const ms = path.match(/^\/seances\/(\d+)$/);
   try {
     if (path === '/connexion') return viewLogin();
     if (path === '/2fa') return viewMfa();
@@ -127,6 +130,9 @@ async function render() {
     if (path === '/dossiers') return viewDossiers();
     if (m) return viewDossier(+m[1]);
     if (path === '/notifications') return viewNotifications();
+    if (path === '/seances') return viewSeances();
+    if (ms) return viewSeance(+ms[1]);
+    if (path === '/rapport') return viewRapport();
     if (path === '/profil') return viewProfile();
     if (path === '/admin/membres' && S.user.role === 'admin') return viewMembers();
     if (path === '/admin/journal' && S.user.role === 'admin') return viewAudit();
@@ -145,17 +151,18 @@ function renderOffline(msg) {
 }
 
 // ===================== Gabarit =====================
-const logoImg = (cls) => h('img', { class: cls, src: 'icons/logo.svg', alt: '' });
+const logoImg = (cls) => h('img', { class: cls, src: 'icons/icon-192.png', alt: '' });
 
 function shell(path, ...content) {
   const isAdmin = S.user && S.user.role === 'admin';
   const links = [
     ['/dossiers', 'Dossiers', 'folder'],
+    ['/seances', 'Séances', 'calendar'],
     ['/notifications', 'Notifications', 'bell'],
     ['/profil', 'Mon compte', 'user'],
     ...(isAdmin ? [['/admin/membres', 'Administration', 'shield']] : []),
   ];
-  const cur = (p) => (path === p || (p === '/dossiers' && path.startsWith('/dossiers')) || (p === '/admin/membres' && path.startsWith('/admin')) ? 'page' : null);
+  const cur = (p) => (path === p || (p === '/dossiers' && path.startsWith('/dossiers')) || (p === '/admin/membres' && path.startsWith('/admin')) || (p === '/seances' && (path.startsWith('/seances') || path === '/rapport')) ? 'page' : null);
   const badge = (p) => (p === '/notifications' && S.unread ? h('span', { class: 'badge-count', 'aria-label': `${S.unread} non lues` }, S.unread) : null);
   const roleLabel = { lecture: 'Lecture seule', ecriture: 'Lecture et écriture', admin: 'Administrateur' };
   $app.replaceChildren(
@@ -422,7 +429,8 @@ async function viewDossier(id) {
   try { data = await api('GET', `/dossiers/${id}`); } catch (e) {
     return shell('/dossiers', h('a', { href: '#/dossiers' }, '← Dossiers'), h('p', { class: e.body && e.body.recused ? 'alert warn' : 'alert err' }, e.message));
   }
-  const { dossier: d, documents, comments, events, conflicts, lastReadCommentId, canWrite, isAdmin } = data;
+  const { dossier: d, documents, comments, events, conflicts, lastReadCommentId, canWrite, isAdmin, canManage, isRapporteur } = data;
+  const extra = isAdmin ? await Promise.all([api('GET', '/gov/membres'), api('GET', '/gov/seances')]).catch(() => null) : null;
   const docsById = Object.fromEntries(documents.map((x) => [x.id, x]));
   refreshUnread();
 
@@ -450,6 +458,7 @@ async function viewDossier(id) {
     const doc = c.document_id ? docsById[c.document_id] : null;
     return h('article', { class: `comment${c.id > lastReadCommentId && c.author_id !== S.user.id ? ' is-new' : ''}`, id: `c${c.id}` },
       h('header', {}, h('b', {}, c.author_name), h('span', { class: 'quality' }, c.author_quality),
+        c.kind === 'rapport' ? h('span', { class: 'pill s-recevable' }, 'Rapport de rapporteur') : null,
         c.id > lastReadCommentId && c.author_id !== S.user.id ? h('span', { class: 'pill new' }, 'Nouveau') : null,
         h('time', { datetime: new Date(c.created_at).toISOString() }, fmtDate(c.created_at))),
       doc ? h('span', { class: 'doc-chip' }, `À propos de : ${doc.original_name}${doc.version > 1 ? ` (v${doc.version})` : ''}`) : null,
@@ -471,13 +480,14 @@ async function viewDossier(id) {
       h('label', { for: `ta${parentId || 0}` }, label),
       h('textarea', { id: `ta${parentId || 0}`, name: 'body', required: true, maxlength: 20000, placeholder: 'Votre commentaire…' }),
       parentId ? null : field('Document concerné', docSel),
+      !parentId && isRapporteur ? h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'as_rapport' }), 'Publier comme mon rapport de rapporteur (art. 28)') : null,
       h('p', { class: 'hint' }, `Publié sous votre nom (${S.user.full_name}${S.user.quality ? ', ' + S.user.quality : ''}), horodaté et signé. Un commentaire publié ne peut plus être ni modifié ni supprimé : vous pourrez seulement y répondre ou le compléter.`),
       h('div', { class: 'row' }, h('button', { type: 'submit' }, 'Publier définitivement')));
     form.addEventListener('submit', submitting(form, async (fd) => {
       const body = String(fd.get('body') || '').trim();
       if (!body) throw new Error('Commentaire vide');
       if (!confirm('Publier ce commentaire ? Il ne pourra plus être modifié ni supprimé.')) return;
-      await api('POST', `/dossiers/${id}/comments`, { body, parent_id: parentId, document_id: fd.get('document_id') ? +fd.get('document_id') : null });
+      await api('POST', `/dossiers/${id}/comments`, { body, parent_id: parentId, document_id: fd.get('document_id') ? +fd.get('document_id') : null, as_rapport: !!fd.get('as_rapport') });
       toast('Commentaire publié');
       onDone();
     }));
@@ -486,8 +496,8 @@ async function viewDossier(id) {
 
   // --- Administration du dossier ---
   let adminBox = null;
-  if (isAdmin) {
-    const st = h('select', { name: 'status' }, Object.entries(S.meta.statuses).map(([k, v]) => h('option', { value: k, selected: k === d.status }, v)));
+  if (canManage) {
+    const st = h('select', { name: 'status' }, Object.entries(S.meta.statuses).filter(([k]) => isAdmin || !(k.startsWith('avis_') || k === 'incompetence') || k === d.status).map(([k, v]) => h('option', { value: k, selected: k === d.status }, v)));
     const proc = h('select', { name: 'procedure' }, h('option', { value: 'ordinaire', selected: d.procedure === 'ordinaire' }, 'Ordinaire'), h('option', { value: 'simplifiee', selected: d.procedure === 'simplifiee' }, 'Simplifiée (art. 30)'));
     const f1 = h('form', { class: 'stack' }, field('Statut', st), field('Procédure', proc), field('Note (historique)', h('input', { name: 'note', maxlength: 1000 })),
       h('button', { type: 'submit', class: 'secondary' }, 'Enregistrer'));
@@ -536,6 +546,7 @@ async function viewDossier(id) {
         conflicts.length ? h('section', { class: 'card small' }, h('h3', {}, 'Membres déportés'), h('ul', {}, conflicts.map((c) => h('li', {}, `${c.full_name}${c.quality ? ' (' + c.quality + ')' : ''} — ${fmtDate(c.declared_at, false)}`)))) : null,
         h('details', { class: 'card small' }, h('summary', {}, 'Historique du dossier'),
           h('ul', {}, events.map((e) => h('li', {}, `${fmtDate(e.at)} — ${e.details}${e.full_name ? ' (' + e.full_name + ')' : ''}`)))),
+        ...govSections(data, extra, id),
         adminBox,
         recuse),
       h('section', { class: 'stack', 'aria-label': 'Discussion' },
@@ -547,7 +558,12 @@ async function viewDossier(id) {
   if (firstNew) firstNew.scrollIntoView({ block: 'center' });
 }
 
-async function openDocument(d, doc) {
+function openDocument(d, doc) {
+  return openBlobViewer(doc.original_name, `/dossiers/${d.id}/documents/${doc.id}/content`, doc.mime, doc.sha256);
+}
+
+async function openBlobViewer(name, apiPath, mime, sha256) {
+  const doc = { original_name: name, mime, sha256 };
   const body = h('div', { class: 'dlg-body viewer' }, h('p', { class: 'muted' }, 'Déchiffrement et chargement…'));
   let url = null;
   const dlg = h('dialog', { 'aria-label': doc.original_name },
@@ -559,7 +575,7 @@ async function openDocument(d, doc) {
   document.body.append(dlg);
   dlg.showModal();
   async function fetchBlob(dl) {
-    const r = await api('GET', `/dossiers/${d.id}/documents/${doc.id}/content${dl ? '?download=1' : ''}`, undefined, { raw: true });
+    const r = await api('GET', `${apiPath}${dl ? '?download=1' : ''}`, undefined, { raw: true });
     return r.blob();
   }
   async function download() {
@@ -694,7 +710,8 @@ async function viewProfile() {
 async function viewMembers(pendingLink = null) {
   const { users } = await api('GET', '/users');
   const roleSel = (val, name = 'role') => h('select', { name }, h('option', { value: 'lecture', selected: val === 'lecture' }, 'Lecture seule'),
-    h('option', { value: 'ecriture', selected: val === 'ecriture' }, 'Lecture et écriture'), h('option', { value: 'admin', selected: val === 'admin' }, 'Administrateur'));
+    h('option', { value: 'ecriture', selected: val === 'ecriture' }, 'Lecture et écriture'), h('option', { value: 'admin', selected: val === 'admin' }, 'Administrateur (président ou vice-président)'));
+  const fnSel = (val, name = 'fonction') => h('select', { name }, Object.entries(S.gov.fonctions).map(([k, v]) => h('option', { value: k, selected: k === val }, v)));
   const linkBox = h('div');
   const showLink = (link) => {
     if (!link) return;
@@ -707,11 +724,14 @@ async function viewMembers(pendingLink = null) {
     field('Nom complet (signera ses commentaires)', h('input', { name: 'full_name', required: true })),
     field('Qualité', h('input', { name: 'quality', placeholder: 'ex. Médecin hyperbare, Juriste, Représentant des usagers…' })),
     field('Adresse électronique (identifiant)', h('input', { name: 'email', type: 'email', required: true })),
-    field('Droits', roleSel('ecriture')),
+    field('Fonction au sein du comité', fnSel('titulaire')),
+    field('Droits dans l’outil', roleSel('ecriture')),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'health_professional', checked: true }), 'Exerce une profession de santé (art. 28.1 et 29.2)'),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'independent' }), 'Membre indépendant de l’association : ne siège ni au CA ni au CE (art. 25.1)'),
     h('p', { class: 'hint' }, 'Le membre reçoit un lien pour choisir son mot de passe et configurer la double authentification. Vous ne connaissez jamais son mot de passe.'),
     h('button', { type: 'submit' }, 'Créer et envoyer l’invitation'));
   create.addEventListener('submit', submitting(create, async (fd) => {
-    const r = await api('POST', '/users', Object.fromEntries(fd));
+    const r = await api('POST', '/users', { ...Object.fromEntries(fd), health_professional: !!fd.get('health_professional'), independent: !!fd.get('independent') });
     toast(`Invitation envoyée à ${r.user.email}`);
     await viewMembers(r.invitationLink);
   }));
@@ -721,12 +741,21 @@ async function viewMembers(pendingLink = null) {
     rs.addEventListener('change', async () => {
       try { await api('PATCH', `/users/${u.id}`, { role: rs.value }); toast('Droits modifiés'); } catch (e) { toast(e.message); rs.value = u.role; }
     });
+    const fs = fnSel(u.fonction);
+    fs.addEventListener('change', async () => {
+      try { await api('PATCH', `/users/${u.id}`, { fonction: fs.value }); toast('Fonction modifiée'); } catch (e) { toast(e.message); fs.value = u.fonction; }
+    });
+    const flag = (key, label) => {
+      const cb = h('input', { type: 'checkbox', checked: u[key] });
+      cb.addEventListener('change', async () => { try { await api('PATCH', `/users/${u.id}`, { [key]: cb.checked }); toast('Enregistré'); } catch (e) { toast(e.message); cb.checked = !cb.checked; } });
+      return h('label', { class: 'check small' }, cb, label);
+    };
     const act = (label, fn, cls = 'secondary small') => h('button', { class: cls, onclick: async () => { try { await fn(); } catch (e) { toast(e.message); } } }, label);
     return h('div', { class: 'card member-card' },
       h('div', {}, h('b', {}, u.full_name), u.id === S.user.id ? ' (vous)' : '', h('div', { class: 'small muted' }, `${u.quality || '—'} · ${u.email}`),
         h('div', { class: 'small' }, h('span', { class: 'pill' }, statusLabel[u.status]), ' ', u.totp_enabled ? '2FA active' : '2FA non configurée',
           u.last_login_at ? ` · dernière connexion ${fmtDate(u.last_login_at)}` : '')),
-      h('div', { class: 'stack' }, rs, h('div', { class: 'row' },
+      h('div', { class: 'stack' }, fs, rs, flag('health_professional', 'Profession de santé'), flag('independent', 'Indépendant de l’association'), h('div', { class: 'row' },
         u.status === 'actif' ? act('Suspendre', async () => { if (confirm(`Suspendre ${u.full_name} ? Ses sessions seront fermées.`)) { await api('PATCH', `/users/${u.id}`, { status: 'suspendu' }); viewMembers(); } }) : null,
         u.status === 'suspendu' && u.totp_enabled ? act('Réactiver', async () => { await api('PATCH', `/users/${u.id}`, { status: 'actif' }); viewMembers(); }) : null,
         act(u.status === 'invite' ? 'Renvoyer l’invitation' : 'Nouvelle invitation', async () => {
@@ -742,20 +771,269 @@ async function viewMembers(pendingLink = null) {
 }
 
 async function viewAudit() {
-  const { entries } = await api('GET', '/users/audit/log?limit=500');
+  const [{ entries }, { checks }] = await Promise.all([api('GET', '/users/audit/log?limit=500'), api('GET', '/gov/integrite')]);
   const res = h('div');
   const check = h('button', { class: 'secondary', onclick: async () => {
     res.replaceChildren(h('p', { class: 'muted' }, 'Vérification…'));
-    const r = await api('GET', '/users/audit/integrity');
+    const r = await api('POST', '/gov/integrite');
     res.replaceChildren(h('div', { class: `alert ${r.ok ? 'ok' : 'err'}` },
-      h('p', {}, r.ok ? `Intègre : ${r.comments} commentaires (chaîne d’empreintes et signatures valides) et ${r.documents} documents vérifiés.` : 'ANOMALIES DÉTECTÉES :'),
+      h('p', {}, r.ok ? `Contrôle n° ${r.checkId} conforme : ${r.comments} commentaires (chaîne d’empreintes et signatures), ${r.documents} documents, ${r.ballots} bulletins, ${r.actes} actes.` : `Contrôle n° ${r.checkId} — ANOMALIES DÉTECTÉES :`),
+      h('p', { class: 'mono' }, `Empreinte de référence : ${r.lastHash}`),
       r.ok ? null : h('ul', {}, r.problems.map((p) => h('li', {}, p))),
       h('details', {}, h('summary', { class: 'small' }, 'Clé publique de signature du serveur'), h('pre', { class: 'mono' }, r.publicKey))));
   } }, 'Vérifier l’intégrité des commentaires et documents');
   shell('/admin/journal', h('a', { href: '#/admin/membres', class: 'small' }, '← Membres'), h('h1', {}, 'Journal et intégrité'),
-    h('div', { class: 'card stack' }, h('p', { class: 'small' }, 'Le journal (connexions, consultations, téléchargements, actions d’administration) est en ajout seul. Le règlement intérieur prévoit une analyse au moins tous les deux mois (art. 40).'), check, res),
+    h('div', { class: 'card stack' }, h('p', { class: 'small' }, 'Le journal (connexions, consultations, téléchargements, actions d’administration) est en ajout seul. Le règlement intérieur prévoit une analyse au moins tous les deux mois (art. 40). Un contrôle d’intégrité est aussi effectué automatiquement avant chaque validation de vote et chaque clôture de séance.'), check, res),
+    h('details', { class: 'card table-wrap' }, h('summary', {}, `Historique des contrôles d’intégrité (${checks.length})`), h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'N°'), h('th', {}, 'Date'), h('th', {}, 'Par'), h('th', {}, 'Objet'), h('th', {}, 'Résultat'), h('th', {}, 'Empreinte'))),
+      h('tbody', {}, checks.map((c) => h('tr', {}, h('td', {}, c.id), h('td', {}, fmtDate(c.at)), h('td', {}, c.full_name || '—'), h('td', {}, c.purpose), h('td', {}, c.ok ? 'Conforme' : 'NON CONFORME'), h('td', { class: 'mono' }, c.last_hash.slice(0, 16) + '…')))))),
     h('div', { class: 'card table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Date'), h('th', {}, 'Personne'), h('th', {}, 'Action'), h('th', {}, 'Objet'), h('th', {}, 'IP'))),
       h('tbody', {}, entries.map((e) => h('tr', {}, h('td', {}, fmtDate(e.at)), h('td', {}, e.full_name || '—'), h('td', {}, e.action.replace(/_/g, ' ')), h('td', {}, e.target), h('td', { class: 'mono' }, e.ip)))))));
+}
+
+
+// ===================== Instruction et délibération =====================
+const CH = () => S.gov.choices;
+const ACTE_TYPES = { avis: 'Avis', pv: 'Procès-verbal', rapport_annuel: 'Rapport annuel', rapport_validation: 'Rapport de validation de signature' };
+const MODE = { presentiel: 'Présentiel', visio: 'Visioconférence', electronique: 'Délibération par voie électronique' };
+const DECISIONS = ['favorable', 'favorable_reserve', 'modifications', 'defavorable', 'incompetence'];
+const actBtn = (label, fn, cls = 'secondary small') => h('button', { class: cls, onclick: async () => { try { await fn(); } catch (e) { toast(e.message); } } }, label);
+
+function govSections(data, extra, id) {
+  const { rapporteurs, scrutins, actes, isAdmin, isMember } = data;
+  const reload = () => viewDossier(id);
+  let designate = null;
+  if (isAdmin && rapporteurs.length < 2 && extra) {
+    const sel = h('select', { name: 'user_id', 'aria-label': 'Membre à désigner' }, extra[0].membres
+      .filter((m) => ['president', 'vice_president', 'titulaire', 'suppleant'].includes(m.fonction) && !rapporteurs.some((r) => r.user_id === m.id))
+      .map((m) => h('option', { value: m.id }, `${m.full_name} — ${m.quality || S.gov.fonctions[m.fonction]}${m.health_professional ? '' : ' (non professionnel de santé)'}`)));
+    designate = h('form', { class: 'row' }, sel, h('button', { type: 'submit', class: 'small' }, 'Désigner'));
+    designate.addEventListener('submit', submitting(designate, async (fd) => {
+      await api('POST', `/gov/dossiers/${id}/rapporteurs`, { user_id: +fd.get('user_id') }); toast('Rapporteur désigné et notifié'); reload();
+    }));
+  }
+  const rapp = h('section', { class: 'card stack' }, h('h2', {}, 'Rapporteurs'),
+    rapporteurs.length ? h('ul', { class: 'plain' }, rapporteurs.map((r) => h('li', { class: 'row between' },
+      h('span', {}, h('b', {}, r.full_name), ` — ${r.quality || ''}${r.health_professional ? '' : ' · non professionnel de santé'}`),
+      isAdmin ? actBtn('Mettre fin', async () => {
+        const reason = prompt('Motif de fin de désignation :'); if (!reason) return;
+        await api('POST', `/gov/dossiers/${id}/rapporteurs/${r.user_id}/fin`, { reason }); reload();
+      }) : null))) : h('p', { class: 'muted small' }, 'Aucun rapporteur désigné.'),
+    designate,
+    h('p', { class: 'hint' }, 'Art. 28.1 : deux rapporteurs, dont au moins un n’exerce pas une profession de santé. Un rapporteur qui se déporte perd sa désignation.'));
+
+  const delib = h('section', { class: 'card stack' }, h('h2', {}, 'Délibération et vote'));
+  const open = scrutins.find((s) => s.status === 'ouvert');
+  for (const sc of scrutins.slice().reverse()) delib.append(scrutinBlock(sc, data, id, reload));
+  if (isAdmin && !open && extra) delib.append(openScrutinForm(data, extra, id, reload));
+  if (!scrutins.length && !isAdmin) delib.append(h('p', { class: 'muted small' }, 'Aucun vote pour l’instant.'));
+  if (open && open.procedure === 'simplifiee' && isMember) {
+    delib.append(actBtn('Demander l’examen en séance plénière (art. 30.2)', async () => {
+      if (!confirm('Le vote en procédure simplifiée sera annulé et le dossier examiné en séance plénière. Continuer ?')) return;
+      await api('POST', `/gov/dossiers/${id}/pleniere`); toast('Examen en séance plénière demandé'); reload();
+    }));
+  }
+  return [rapp, delib, actes.length ? h('section', { class: 'card stack' }, h('h2', {}, 'Actes du dossier'), actesList(actes, isAdmin, reload)) : null];
+}
+
+function scrutinBlock(sc, data, id, reload) {
+  const box = h('div', { class: 'vote-box stack' });
+  const status = sc.status === 'ouvert' ? h('span', { class: 'pill new' }, 'Vote ouvert') : sc.status === 'annule' ? h('span', { class: 'pill' }, 'Annulé') : h('span', { class: 'pill s-avis_favorable' }, 'Clos');
+  box.append(h('div', { class: 'row between' }, h('b', {}, `Scrutin n° ${sc.id} — procédure ${sc.procedure === 'simplifiee' ? 'simplifiée' : 'ordinaire'}${sc.secret ? ' — bulletin secret' : ''}`), status));
+  box.append(h('p', { class: 'small muted' }, `Ouvert le ${fmtDate(sc.opened_at)}${sc.deadline ? ` · date limite ${fmtDate(sc.deadline)}` : ''} · ${sc.electeurs.filter((e) => e.voted).length}/${sc.electeurs.length} ont voté`));
+  box.append(h('details', {}, h('summary', { class: 'small' }, 'Membres appelés à voter'),
+    h('ul', { class: 'small' }, sc.electeurs.map((e) => h('li', {}, `${e.full_name}${e.substitute_for_name ? ` (remplace ${e.substitute_for_name})` : ''} — ${e.voted ? 'a voté' : 'n’a pas encore voté'}`)))));
+  if (sc.status === 'annule') box.append(h('p', { class: 'small' }, `Motif : ${sc.cancel_reason}`));
+  if (sc.canVote) {
+    const choices = Object.entries(CH()).filter(([k]) => sc.procedure !== 'simplifiee' || (k !== 'defavorable' && k !== 'abstention'));
+    const f = h('form', { class: 'stack' },
+      h('fieldset', { class: 'choices' }, h('legend', {}, 'Votre vote'), choices.map(([k, v]) => h('label', { class: 'check' }, h('input', { type: 'radio', name: 'choice', value: k, required: true }), v))),
+      field('Motivation (consignée au procès-verbal si votre avis diverge)', h('textarea', { name: 'motivation', maxlength: 4000 })),
+      h('p', { class: 'hint' }, sc.secret ? 'Vote secret : votre bulletin est enregistré sans votre nom. Il est définitif.' : 'Votre bulletin est nominatif et définitif.'),
+      h('button', { type: 'submit' }, 'Voter (définitif)'));
+    f.addEventListener('submit', submitting(f, async (fd) => {
+      if (!fd.get('choice')) throw new Error('Choisissez une option');
+      if (!confirm(`Confirmer votre vote : « ${CH()[fd.get('choice')]} » ? Il ne pourra pas être modifié.`)) return;
+      await api('POST', `/gov/scrutins/${sc.id}/vote`, { choice: fd.get('choice'), motivation: fd.get('motivation') }); toast('Vote enregistré'); reload();
+    }));
+    box.append(f);
+  } else if (sc.hasVoted && sc.status === 'ouvert') box.append(h('p', { class: 'alert ok small' }, 'Votre vote est enregistré. Le résultat sera visible à la clôture.'));
+  if (sc.status === 'ouvert' && data.isAdmin) {
+    const err = h('div');
+    box.append(h('div', { class: 'row' },
+      h('button', { class: 'small', onclick: async () => {
+        if (!confirm('Clore le vote ? Un contrôle de non-altération de toutes les données est effectué d’abord : s’il échoue, le vote n’est pas validé.')) return;
+        try { const r = await api('POST', `/gov/scrutins/${sc.id}/cloture`); toast(`Vote clos — contrôle d’intégrité n° ${r.check.id} conforme`); reload(); } catch (e) {
+          err.replaceChildren(h('div', { class: 'alert err small' }, e.message, e.body && e.body.problems ? h('ul', {}, e.body.problems.map((p) => h('li', {}, p))) : null));
+        }
+      } }, 'Clore le vote (contrôle d’intégrité)'),
+      actBtn('Annuler le scrutin', async () => { const reason = prompt('Motif d’annulation :'); if (!reason) return; await api('POST', `/gov/scrutins/${sc.id}/annulation`, { reason }); reload(); })), err);
+  }
+  if (sc.status === 'clos') {
+    const qr = sc.quorum;
+    const label = CH()[sc.result] || (sc.result === 'pas_de_majorite' ? 'Pas de majorité : nouvel examen nécessaire' : 'Quorum non atteint : aucune décision');
+    box.append(h('p', { class: `alert ${CH()[sc.result] ? 'ok' : 'warn'}` }, h('b', {}, `Décision : ${label}`)));
+    box.append(h('p', { class: 'small' }, `Résultat : ${Object.entries(sc.counts).filter(([, n]) => n).map(([k, n]) => `${CH()[k]} : ${n}`).join(' · ') || 'aucun bulletin'}`));
+    box.append(h('p', { class: 'small muted' }, `Quorum : ${qr.participants} participant(s) pour ${qr.needed} requis${qr.nonHealth !== undefined ? ` · non professionnels de santé : ${qr.nonHealth} · indépendants : ${qr.independent}` : ''}${qr.ok ? '' : ' — ' + qr.reasons.join(' ; ')}`));
+    if (sc.divergent && sc.divergent.length) box.append(h('details', {}, h('summary', { class: 'small' }, `Opinions divergentes (${sc.divergent.length})`), h('ul', { class: 'small' }, sc.divergent.map((x) => h('li', {}, `${CH()[x.choice]}${x.motivation ? ' — ' + x.motivation : ''}`)))));
+    if (sc.ballots) box.append(h('details', {}, h('summary', { class: 'small' }, 'Bulletins nominatifs'), h('ul', { class: 'small' }, sc.ballots.map((b) => h('li', {}, `${b.voter_name} : ${CH()[b.choice]}${b.motivation ? ' — ' + b.motivation : ''}`)))));
+    box.append(h('p', { class: 'hint mono' }, `Contrôle d’intégrité n° ${sc.integrity_check_id} conforme · empreinte des bulletins ${(sc.tally_hash || '').slice(0, 16)}…`));
+    if (data.isAdmin && !sc.avis && DECISIONS.includes(sc.result)) box.append(avisForm(sc, id, reload));
+  }
+  return box;
+}
+
+function openScrutinForm(data, extra, id, reload) {
+  const [{ membres }, { seances }] = extra;
+  const supp = membres.filter((m) => m.fonction === 'suppleant');
+  const tit = membres.filter((m) => S.gov.voting.includes(m.fonction));
+  const f = h('form', { class: 'stack' },
+    field('Procédure', h('select', { name: 'procedure' }, h('option', { value: 'ordinaire' }, 'Ordinaire'),
+      h('option', { value: 'simplifiee', selected: data.dossier.procedure === 'simplifiee' }, 'Simplifiée (art. 30) : président + un rapporteur'))),
+    field('Séance', h('select', { name: 'seance_id' }, h('option', { value: '' }, 'Hors séance (vote par voie électronique)'),
+      seances.filter((s) => !s.closed_at).map((s) => h('option', { value: s.id }, `Séance n° ${s.id} du ${fmtDate(s.date)}`)))),
+    data.rapporteurs.length ? field('Rapporteur (procédure simplifiée)', h('select', { name: 'rapporteur_id' }, data.rapporteurs.map((r) => h('option', { value: r.user_id }, r.full_name)))) : null,
+    field('Date limite (facultative)', h('input', { type: 'datetime-local', name: 'deadline' })),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'secret' }), 'Vote à bulletin secret (de droit si un membre le demande, art. 29.3)'),
+    supp.length ? h('details', {}, h('summary', { class: 'small' }, 'Suppléants siégeant en remplacement'),
+      supp.map((m) => field(`${m.full_name} remplace :`, h('select', { name: `sub_${m.id}` }, h('option', { value: '' }, '— personne —'), tit.map((t) => h('option', { value: t.id }, t.full_name)))))) : null,
+    h('p', { class: 'hint' }, 'Procédure ordinaire : deux rapporteurs doivent être désignés ; tous les membres votants non déportés sont appelés à voter et notifiés.'),
+    h('button', { type: 'submit' }, 'Ouvrir le vote'));
+  f.addEventListener('submit', submitting(f, async (fd) => {
+    const substitutes = supp.filter((m) => fd.get(`sub_${m.id}`)).map((m) => ({ user_id: m.id, substitute_for: +fd.get(`sub_${m.id}`) }));
+    const dl = fd.get('deadline');
+    await api('POST', `/gov/dossiers/${id}/scrutins`, {
+      procedure: fd.get('procedure'), seance_id: fd.get('seance_id') || null, rapporteur_id: fd.get('rapporteur_id') ? +fd.get('rapporteur_id') : null,
+      secret: !!fd.get('secret'), deadline: dl ? new Date(dl).getTime() : null, substitutes,
+    });
+    toast('Vote ouvert — les membres sont notifiés'); reload();
+  }));
+  return h('details', { class: 'subcard' }, h('summary', {}, 'Ouvrir un vote'), f);
+}
+
+function avisForm(sc, id, reload) {
+  const f = h('form', { class: 'stack subcard' }, h('h3', {}, 'Établir l’avis (annexe 7)'),
+    field('Motivation (français) *', h('textarea', { name: 'motivation', required: true })),
+    field('Motivation (anglais, facultative)', h('textarea', { name: 'motivation_en' })),
+    field('Validité en mois (36 au plus, art. 31.4)', h('input', { type: 'number', name: 'validity_months', min: 1, max: 36, value: 36 })),
+    h('p', { class: 'hint' }, 'L’avis est produit en PDF (français et anglais) à votre nom, avec la liste et la version des documents examinés. Signez-le ensuite avec votre certificat qualifié, puis déposez la version signée.'),
+    h('button', { type: 'submit' }, 'Produire l’avis'));
+  f.addEventListener('submit', submitting(f, async (fd) => {
+    await api('POST', `/gov/dossiers/${id}/avis`, { scrutin_id: sc.id, motivation: fd.get('motivation'), motivation_en: fd.get('motivation_en'), validity_months: +fd.get('validity_months') });
+    toast('Avis produit'); reload();
+  }));
+  return f;
+}
+
+function actesList(actes, isAdmin, reload) {
+  return h('ul', { class: 'doc-list' }, actes.map((a) => h('li', {},
+    h('button', { onclick: () => openBlobViewer(a.original_name, `/gov/actes/${a.id}/content`, 'application/pdf', a.sha256) },
+      h('span', { class: 'doc-icon' }, a.signed ? 'SIGNÉ' : 'PDF'),
+      h('span', {}, a.title, h('span', { class: 'piece' }, `${ACTE_TYPES[a.type]} · ${fmtDate(a.created_at)}${a.created_by_name ? ` · ${a.created_by_name}` : ''}${a.signed ? ' · signature électronique déposée' : ''}${a.sent_at ? ` · transmis le ${fmtDate(a.sent_at, false)}` : ''}`))),
+    isAdmin && !a.signed && a.type !== 'rapport_validation' ? h('div', { class: 'row acte-actions' },
+      actBtn('Déposer la version signée', () => uploadSigned(a, reload)),
+      a.type === 'avis' ? actBtn('Transmettre au porteur', async () => {
+        try { await api('POST', `/gov/actes/${a.id}/transmettre`, {}); } catch (e) {
+          if (!(e.body && e.body.needsConfirmation) || !confirm(e.message)) throw e;
+          await api('POST', `/gov/actes/${a.id}/transmettre`, { sans_signature_qualifiee: true });
+        }
+        toast('Avis transmis au porteur'); reload();
+      }) : null) : null)));
+}
+
+function modal(title, content) {
+  const dlg = h('dialog', { 'aria-label': title }, h('div', { class: 'dlg-head' }, h('b', {}, title), h('button', { class: 'small', onclick: () => dlg.close() }, 'Fermer')), h('div', { class: 'dlg-body' }, content));
+  dlg.addEventListener('close', () => dlg.remove());
+  document.body.append(dlg); dlg.showModal();
+  return dlg;
+}
+
+function uploadSigned(a, reload) {
+  const f = h('form', { class: 'stack' },
+    h('ol', { class: 'small' },
+      h('li', {}, 'Téléchargez l’acte.'),
+      h('li', {}, 'Signez-le avec votre certificat de signature qualifiée (clé USB ou service à distance), sans modifier le document.'),
+      h('li', {}, 'Facultatif : vérifiez la signature avec l’outil de validation de la Commission européenne (DSS) et joignez son rapport.'),
+      h('li', {}, 'Déposez ici le PDF signé : l’outil vérifie qu’il s’agit bien de l’acte qu’il a produit.')),
+    field('PDF signé', h('input', { type: 'file', name: 'file', accept: '.pdf', required: true })),
+    field('Rapport de validation (facultatif)', h('input', { type: 'file', name: 'rapport', accept: '.pdf' })),
+    field('Note', h('input', { name: 'note', placeholder: 'ex. certificat qualifié sur clé USB' })),
+    h('button', { type: 'submit' }, 'Déposer'));
+  const dlg = modal(`Version signée — ${a.title}`, f);
+  f.addEventListener('submit', submitting(f, async (fd) => {
+    if (!fd.get('rapport') || !fd.get('rapport').size) fd.delete('rapport');
+    await api('POST', `/gov/actes/${a.id}/signe`, fd);
+    dlg.close(); toast('Version signée enregistrée'); reload();
+  }));
+}
+
+// ===================== Séances =====================
+async function viewSeances() {
+  const { seances } = await api('GET', '/gov/seances');
+  let form = null;
+  if (S.user.role === 'admin' || S.user.fonction === 'secretariat') {
+    form = h('form', { class: 'card stack' }, h('h2', {}, 'Programmer une séance'),
+      field('Date et heure', h('input', { type: 'datetime-local', name: 'date', required: true })),
+      field('Modalité', h('select', { name: 'mode' }, Object.entries(MODE).map(([k, v]) => h('option', { value: k }, v)))),
+      field('Lieu ou lien de visioconférence', h('input', { name: 'lieu' })),
+      h('button', { type: 'submit' }, 'Créer la séance'));
+    form.addEventListener('submit', submitting(form, async (fd) => {
+      const r = await api('POST', '/gov/seances', { date: new Date(fd.get('date')).getTime(), mode: fd.get('mode'), lieu: fd.get('lieu') });
+      go(`/seances/${r.seance.id}`);
+    }));
+  }
+  shell('/seances', h('div', { class: 'row between' }, h('h1', {}, 'Séances'), h('a', { class: 'btn secondary', href: '#/rapport' }, 'Rapport annuel')),
+    seances.length ? h('div', { class: 'dossiers' }, seances.map((s) => h('a', { class: 'dossier-item', href: `#/seances/${s.id}` }, h('div', { class: 'card' },
+      h('div', { class: 'row between' }, h('span', { class: 'ref' }, `Séance n° ${s.id}`), h('span', { class: `pill ${s.closed_at ? '' : 'new'}` }, s.closed_at ? 'Close' : 'Ouverte')),
+      h('h2', {}, fmtDate(s.date)),
+      h('div', { class: 'meta' }, h('span', {}, MODE[s.mode]), s.lieu ? h('span', {}, s.lieu) : null, h('span', {}, `${s.scrutins} vote(s)`), s.pv_id ? h('span', {}, 'Procès-verbal établi') : null)))))
+      : h('p', { class: 'empty' }, 'Aucune séance.'),
+    form);
+}
+
+async function viewSeance(id) {
+  const { seance: s, scrutins, actes, check } = await api('GET', `/gov/seances/${id}`);
+  const isAdmin = S.user.role === 'admin';
+  const reload = () => viewSeance(id);
+  const closeBtn = isAdmin && !s.closed_at ? actBtn('Clore la séance et produire le procès-verbal', async () => {
+    if (!confirm('Clore la séance ? Un contrôle d’intégrité est effectué, puis le procès-verbal est produit. La séance ne pourra plus être modifiée.')) return;
+    const r = await api('POST', `/gov/seances/${id}/cloture`); toast(`Séance close — contrôle n° ${r.check.id} conforme`); reload();
+  }, 'small') : null;
+  shell('/seances', h('a', { href: '#/seances', class: 'small' }, '← Séances'), h('h1', {}, `Séance n° ${s.id} — ${fmtDate(s.date)}`),
+    h('div', { class: 'card stack' }, h('p', {}, `${MODE[s.mode]}${s.lieu ? ' — ' + s.lieu : ''}`),
+      s.closed_at ? h('p', { class: 'alert ok small' }, `Close le ${fmtDate(s.closed_at)}${check ? ` — contrôle d’intégrité n° ${check.id} conforme` : ''}`)
+        : h('p', { class: 'muted small' }, 'Pour inscrire un dossier, ouvrez un vote depuis le dossier en choisissant cette séance.'), closeBtn),
+    h('h2', {}, 'Ordre du jour et votes'),
+    scrutins.length ? h('div', { class: 'stack' }, scrutins.map((sc) => (sc.recused ? h('div', { class: 'card small' }, `${sc.reference} — vous vous êtes déporté(e)`)
+      : h('a', { class: 'dossier-item', href: `#/dossiers/${sc.dossier_id}` }, h('div', { class: 'card' },
+        h('div', { class: 'row between' }, h('span', { class: 'ref' }, sc.reference), h('span', { class: 'pill' }, sc.status === 'clos' ? (CH()[sc.result] || sc.result.replace(/_/g, ' ')) : sc.status)),
+        h('h2', {}, sc.title)))))) : h('p', { class: 'muted' }, 'Aucun vote inscrit.'),
+    actes.length ? h('section', { class: 'card stack' }, h('h2', {}, 'Procès-verbal'), actesList(actes, isAdmin, reload)) : null);
+}
+
+// ===================== Rapport annuel =====================
+const kpi = (label, value) => h('div', { class: 'card kpi' }, h('div', { class: 'kpi-v' }, String(value)), h('div', { class: 'small muted' }, label));
+async function viewRapport() {
+  const now = new Date().getFullYear();
+  const sel = h('select', { 'aria-label': 'Année' }, [0, 1, 2, 3].map((i) => h('option', { value: now - i }, now - i)));
+  const box = h('div', { class: 'stack' });
+  const load = async () => {
+    const y = +sel.value;
+    const { stats: st, actes } = await api('GET', `/gov/rapport-annuel?annee=${y}`);
+    const dd = (x) => (x == null ? '—' : `${x.toFixed(1).replace('.', ',')} j`);
+    box.replaceChildren(
+      h('div', { class: 'kpis' }, kpi('Demandes déposées', st.deposes), kpi('Avis rendus', st.avis), kpi('Délai moyen', dd(st.delays.mean)),
+        kpi(`Avis en ${st.delays.limitDays} j au plus`, `${st.delays.withinLimit}/${st.delays.n}`), kpi('Séances', st.seances), kpi('Déports', st.deports)),
+      h('div', { class: 'card' }, h('h2', {}, 'Avis par catégorie'),
+        h('table', {}, h('tbody', {}, Object.entries(st.byCategory).map(([k, n]) => h('tr', {}, h('td', {}, CH()[k]), h('td', {}, n))))),
+        h('p', { class: 'small muted' }, `Procédure ordinaire : ${st.ordinaires} · simplifiée : ${st.simplifiees} · délai médian : ${dd(st.delays.median)} · contrôles d’intégrité conformes : ${st.integrityChecks.conformes}/${st.integrityChecks.total}`)),
+      S.user.role === 'admin' ? actBtn(`Produire le rapport ${y} (PDF)`, async () => { await api('POST', '/gov/rapport-annuel', { annee: y }); toast('Rapport produit'); load(); }, '') : null,
+      actes.length ? h('div', { class: 'card' }, h('h2', {}, 'Rapports produits'), actesList(actes, S.user.role === 'admin', load)) : null);
+  };
+  sel.addEventListener('change', load);
+  shell('/rapport', h('a', { href: '#/seances', class: 'small' }, '← Séances'),
+    h('div', { class: 'row between' }, h('h1', {}, 'Rapport annuel d’activité'), sel),
+    h('p', { class: 'muted small' }, 'Art. 34.2 : nombre de dossiers, avis par catégorie, délais moyens. Aucun élément confidentiel.'), box);
+  await load();
 }
 
 render();

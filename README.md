@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/logo.svg" width="120" alt="Logo LeSacAEthique"></p>
+<p align="center"><img src="assets/logo-1024.png" width="128" alt="Logo : un sac en cuir d'où sort un avis du comité (balance et loupe)"></p>
 
 # LeSacAEthique
 
@@ -10,6 +10,13 @@ Outil d'échanges sécurisés du **CER-PROMEDNAV**, comité d'éthique de la rec
 - Un **administrateur** crée les comptes et règle les droits : *lecture seule*, *lecture et écriture* ou *administrateur*.
 - Chaque membre choisit son mot de passe et le **réinitialise lui-même** en cas de perte. La **double authentification** est obligatoire.
 - Les documents sont stockés **sur le serveur de l'association**, chiffrés.
+- **Instruction et délibération** (règlement intérieur, art. 28 à 34) :
+  - désignation des rapporteurs (deux, dont au moins un non professionnel de santé) ;
+  - votes en séance ou par voie électronique, en procédure ordinaire ou simplifiée, avec suppléants, quorum, majorité et bulletin secret ;
+  - **contrôle de non-altération obligatoire avant toute validation de vote** ;
+  - procès-verbaux, avis bilingues selon l'annexe 7 et rapport annuel, en PDF ;
+  - dépôt et vérification de la version signée par signature électronique qualifiée.
+- **Gouvernance de l'outil** : l'administrateur est le président du comité, suppléé par le vice-président. Personne ne connaît les mots de passe. Un membre peut se déporter d'un dossier pour conflit d'intérêts.
 
 Une seule interface sert tous les appareils :
 
@@ -37,14 +44,15 @@ Membres : navigateur / PWA / Electron / Capacitor ──(HTTPS)──►
 | `desktop/` | application de bureau Electron |
 | `mobile/` | applications Android et iOS (Capacitor) |
 | `deploy/` | Docker, proxy HTTPS (Caddy), service systemd, sauvegarde chiffrée |
-| `docs/` | [installation](docs/INSTALLATION.md), [guide des membres](docs/GUIDE_MEMBRES.md), [sécurité, conformité et limites](docs/CONFORMITE_ET_LIMITES.md) |
+| `docs/` | [installation](docs/INSTALLATION.md), [guide des membres](docs/GUIDE_MEMBRES.md), [sécurité, conformité et limites](docs/CONFORMITE_ET_LIMITES.md), [propositions pour le règlement intérieur](docs/PROPOSITION_REGLEMENT_INTERIEUR.md) (+ .docx), [signature électronique qualifiée](docs/SIGNATURE_QUALIFIEE.md) (+ .docx) |
+| `design/`, `tools/` | logo selon la charte LeSacA (sac de LeSacAPDF) et son générateur (`node tools/make-icons.js`) |
 
 ## Démarrage rapide (essai local)
 
 ```bash
 cd server
 npm ci
-npm test                                   # 17 tests : 2FA, droits, immuabilité, falsification, déport…
+npm test                                   # 32 tests : 2FA, droits, immuabilité, falsification, déport, votes, quorum, avis, signature…
 npm run create-admin -- --email vous@exemple.fr --name "Prénom Nom" --quality "Président du CER"
 npm start                                  # http://localhost:8443
 ```

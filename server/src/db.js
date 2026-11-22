@@ -28,6 +28,11 @@ CREATE TABLE IF NOT EXISTS users (
   full_name       TEXT NOT NULL,
   quality         TEXT NOT NULL DEFAULT '',
   role            TEXT NOT NULL CHECK (role IN ('lecture','ecriture','admin')),
+  -- Fonction au sein du comité (art. 25 et 26 du règlement intérieur)
+  fonction        TEXT NOT NULL DEFAULT 'titulaire'
+                  CHECK (fonction IN ('president','vice_president','titulaire','suppleant','secretariat','consultatif')),
+  health_professional INTEGER NOT NULL DEFAULT 1,  -- exerce une profession de santé (art. 28.1, 29.2)
+  independent     INTEGER NOT NULL DEFAULT 0,      -- membre indépendant de l'association (art. 25.1, 29.2)
   status          TEXT NOT NULL DEFAULT 'invite' CHECK (status IN ('invite','actif','suspendu')),
   password_hash   TEXT,
   totp_secret     TEXT,
@@ -92,6 +97,7 @@ CREATE TABLE IF NOT EXISTS dossier_events (
   at          INTEGER NOT NULL,
   user_id     INTEGER REFERENCES users(id),
   type        TEXT NOT NULL,
+  value       TEXT,
   details     TEXT NOT NULL DEFAULT ''
 );
 
@@ -115,7 +121,7 @@ CREATE TABLE IF NOT EXISTS comments (
   dossier_id     INTEGER NOT NULL REFERENCES dossiers(id),
   parent_id      INTEGER REFERENCES comments(id),
   document_id    INTEGER REFERENCES documents(id),
-  kind           TEXT NOT NULL DEFAULT 'commentaire' CHECK (kind IN ('commentaire','reponse','complement')),
+  kind           TEXT NOT NULL DEFAULT 'commentaire' CHECK (kind IN ('commentaire','reponse','complement','rapport')),
   author_id      INTEGER NOT NULL REFERENCES users(id),
   author_name    TEXT NOT NULL,
   author_quality TEXT NOT NULL,
@@ -172,6 +178,112 @@ CREATE TABLE IF NOT EXISTS audit_log (
   details  TEXT NOT NULL DEFAULT ''
 );
 
+-- ===== Instruction et délibération (art. 28 à 34) =====
+CREATE TABLE IF NOT EXISTS rapporteurs (
+  id            INTEGER PRIMARY KEY,
+  dossier_id    INTEGER NOT NULL REFERENCES dossiers(id),
+  user_id       INTEGER NOT NULL REFERENCES users(id),
+  designated_by INTEGER NOT NULL REFERENCES users(id),
+  designated_at INTEGER NOT NULL,
+  ended_at      INTEGER,
+  end_reason    TEXT
+);
+
+-- Contrôles d'intégrité : chaque contrôle est conservé (preuve du contrôle préalable au vote)
+CREATE TABLE IF NOT EXISTS integrity_checks (
+  id         INTEGER PRIMARY KEY,
+  at         INTEGER NOT NULL,
+  user_id    INTEGER REFERENCES users(id),
+  purpose    TEXT NOT NULL,
+  ok         INTEGER NOT NULL,
+  comments   INTEGER NOT NULL,
+  documents  INTEGER NOT NULL,
+  ballots    INTEGER NOT NULL DEFAULT 0,
+  actes      INTEGER NOT NULL DEFAULT 0,
+  last_hash  TEXT NOT NULL,
+  problems   TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE TABLE IF NOT EXISTS seances (
+  id          INTEGER PRIMARY KEY,
+  date        INTEGER NOT NULL,
+  mode        TEXT NOT NULL CHECK (mode IN ('presentiel','visio','electronique')),
+  lieu        TEXT NOT NULL DEFAULT '',
+  created_by  INTEGER NOT NULL REFERENCES users(id),
+  created_at  INTEGER NOT NULL,
+  closed_at   INTEGER,
+  closed_by   INTEGER REFERENCES users(id),
+  integrity_check_id INTEGER REFERENCES integrity_checks(id)
+);
+
+CREATE TABLE IF NOT EXISTS scrutins (
+  id            INTEGER PRIMARY KEY,
+  dossier_id    INTEGER NOT NULL REFERENCES dossiers(id),
+  seance_id     INTEGER REFERENCES seances(id),
+  procedure     TEXT NOT NULL CHECK (procedure IN ('ordinaire','simplifiee')),
+  secret        INTEGER NOT NULL DEFAULT 0,
+  status        TEXT NOT NULL DEFAULT 'ouvert' CHECK (status IN ('ouvert','clos','annule')),
+  opened_by     INTEGER NOT NULL REFERENCES users(id),
+  opened_at     INTEGER NOT NULL,
+  deadline      INTEGER,
+  seats         INTEGER NOT NULL,          -- membres votants en exercice (base du quorum)
+  documents_json TEXT NOT NULL DEFAULT '[]', -- documents examinés (id, nom, version, empreinte)
+  closed_by     INTEGER REFERENCES users(id),
+  closed_at     INTEGER,
+  integrity_check_id INTEGER REFERENCES integrity_checks(id),
+  participants  INTEGER,
+  quorum_json   TEXT,
+  tally_json    TEXT,
+  tally_hash    TEXT,
+  result        TEXT,
+  cancel_reason TEXT
+);
+
+CREATE TABLE IF NOT EXISTS scrutin_electeurs (
+  scrutin_id     INTEGER NOT NULL REFERENCES scrutins(id),
+  user_id        INTEGER NOT NULL REFERENCES users(id),
+  substitute_for INTEGER REFERENCES users(id),
+  PRIMARY KEY (scrutin_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS emargements (
+  scrutin_id INTEGER NOT NULL REFERENCES scrutins(id),
+  user_id    INTEGER NOT NULL REFERENCES users(id),
+  at         INTEGER NOT NULL,
+  PRIMARY KEY (scrutin_id, user_id)
+);
+
+-- Bulletins : clé aléatoire, sans horodatage, sans auteur si le vote est secret
+CREATE TABLE IF NOT EXISTS bulletins (
+  id          TEXT PRIMARY KEY,
+  scrutin_id  INTEGER NOT NULL REFERENCES scrutins(id),
+  choice      TEXT NOT NULL CHECK (choice IN ('favorable','favorable_reserve','modifications','defavorable','incompetence','abstention')),
+  motivation  TEXT NOT NULL DEFAULT '',
+  voter_id    INTEGER REFERENCES users(id),
+  voter_name  TEXT
+) WITHOUT ROWID;
+
+-- Actes produits : avis (annexe 7), procès-verbaux, rapports annuels, et leurs versions signées
+CREATE TABLE IF NOT EXISTS actes (
+  id            INTEGER PRIMARY KEY,
+  type          TEXT NOT NULL CHECK (type IN ('avis','pv','rapport_annuel','rapport_validation')),
+  dossier_id    INTEGER REFERENCES dossiers(id),
+  seance_id     INTEGER REFERENCES seances(id),
+  scrutin_id    INTEGER REFERENCES scrutins(id),
+  year          INTEGER,
+  title         TEXT NOT NULL,
+  meta_json     TEXT NOT NULL DEFAULT '{}',
+  storage_name  TEXT NOT NULL UNIQUE,
+  original_name TEXT NOT NULL,
+  size          INTEGER NOT NULL,
+  sha256        TEXT NOT NULL,
+  signed        INTEGER NOT NULL DEFAULT 0,
+  parent_id     INTEGER REFERENCES actes(id),
+  created_by    INTEGER REFERENCES users(id),
+  created_at    INTEGER NOT NULL,
+  sent_at       INTEGER
+);
+
 CREATE INDEX IF NOT EXISTS idx_comments_dossier ON comments(dossier_id, id);
 CREATE INDEX IF NOT EXISTS idx_documents_dossier ON documents(dossier_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at);
@@ -200,6 +312,48 @@ CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON dossier_events
 BEGIN SELECT RAISE(ABORT, 'Historique en ajout seul'); END;
 CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON dossier_events
 BEGIN SELECT RAISE(ABORT, 'Historique en ajout seul'); END;
+
+CREATE TRIGGER IF NOT EXISTS rapporteurs_no_delete BEFORE DELETE ON rapporteurs
+BEGIN SELECT RAISE(ABORT, 'Une désignation ne peut pas être supprimée'); END;
+CREATE TRIGGER IF NOT EXISTS rapporteurs_update_once BEFORE UPDATE ON rapporteurs
+WHEN old.ended_at IS NOT NULL OR new.dossier_id IS NOT old.dossier_id OR new.user_id IS NOT old.user_id
+  OR new.designated_at IS NOT old.designated_at OR new.designated_by IS NOT old.designated_by
+BEGIN SELECT RAISE(ABORT, 'Une désignation ne peut pas être modifiée'); END;
+
+CREATE TRIGGER IF NOT EXISTS checks_no_update BEFORE UPDATE ON integrity_checks
+BEGIN SELECT RAISE(ABORT, 'Un contrôle d''intégrité ne peut pas être modifié'); END;
+CREATE TRIGGER IF NOT EXISTS checks_no_delete BEFORE DELETE ON integrity_checks
+BEGIN SELECT RAISE(ABORT, 'Un contrôle d''intégrité ne peut pas être supprimé'); END;
+
+CREATE TRIGGER IF NOT EXISTS seances_no_delete BEFORE DELETE ON seances
+BEGIN SELECT RAISE(ABORT, 'Une séance ne peut pas être supprimée'); END;
+CREATE TRIGGER IF NOT EXISTS seances_closed BEFORE UPDATE ON seances WHEN old.closed_at IS NOT NULL
+BEGIN SELECT RAISE(ABORT, 'Une séance close ne peut pas être modifiée'); END;
+
+CREATE TRIGGER IF NOT EXISTS scrutins_no_delete BEFORE DELETE ON scrutins
+BEGIN SELECT RAISE(ABORT, 'Un scrutin ne peut pas être supprimé'); END;
+CREATE TRIGGER IF NOT EXISTS scrutins_closed BEFORE UPDATE ON scrutins WHEN old.status <> 'ouvert'
+BEGIN SELECT RAISE(ABORT, 'Un scrutin clos ou annulé ne peut pas être modifié'); END;
+
+CREATE TRIGGER IF NOT EXISTS electeurs_no_update BEFORE UPDATE ON scrutin_electeurs
+BEGIN SELECT RAISE(ABORT, 'Liste électorale figée'); END;
+CREATE TRIGGER IF NOT EXISTS electeurs_no_delete BEFORE DELETE ON scrutin_electeurs
+BEGIN SELECT RAISE(ABORT, 'Liste électorale figée'); END;
+CREATE TRIGGER IF NOT EXISTS emargements_no_update BEFORE UPDATE ON emargements
+BEGIN SELECT RAISE(ABORT, 'Émargement définitif'); END;
+CREATE TRIGGER IF NOT EXISTS emargements_no_delete BEFORE DELETE ON emargements
+BEGIN SELECT RAISE(ABORT, 'Émargement définitif'); END;
+CREATE TRIGGER IF NOT EXISTS bulletins_no_update BEFORE UPDATE ON bulletins
+BEGIN SELECT RAISE(ABORT, 'Un bulletin ne peut pas être modifié'); END;
+CREATE TRIGGER IF NOT EXISTS bulletins_no_delete BEFORE DELETE ON bulletins
+BEGIN SELECT RAISE(ABORT, 'Un bulletin ne peut pas être supprimé'); END;
+
+CREATE TRIGGER IF NOT EXISTS actes_no_delete BEFORE DELETE ON actes
+BEGIN SELECT RAISE(ABORT, 'Un acte ne peut pas être supprimé'); END;
+CREATE TRIGGER IF NOT EXISTS actes_update_sent_only BEFORE UPDATE ON actes
+WHEN new.sha256 IS NOT old.sha256 OR new.storage_name IS NOT old.storage_name OR new.meta_json IS NOT old.meta_json
+  OR new.type IS NOT old.type OR new.parent_id IS NOT old.parent_id OR new.created_at IS NOT old.created_at
+BEGIN SELECT RAISE(ABORT, 'Un acte ne peut pas être modifié'); END;
 
 CREATE TRIGGER IF NOT EXISTS conflicts_no_update BEFORE UPDATE ON conflicts
 BEGIN SELECT RAISE(ABORT, 'Une déclaration de conflit ne peut pas être modifiée'); END;

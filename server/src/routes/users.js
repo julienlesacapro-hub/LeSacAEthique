@@ -18,6 +18,10 @@ const q = () => db.get();
 router.use(requireSession(['full']), requireRole('admin'));
 
 const ROLES = ['lecture', 'ecriture', 'admin'];
+const gov = require('../governance');
+const FONCTIONS = Object.keys(gov.FONCTIONS);
+const adminAllowed = (f) => config.adminFunctions.includes(f);
+const ADMIN_RULE = () => `Le rôle administrateur est réservé à : ${config.adminFunctions.map((f) => gov.FONCTIONS[f]).join(', ')} (règlement intérieur)`;
 const ROLE_LABEL = { lecture: 'lecture seule', ecriture: 'lecture et écriture', admin: 'administrateur' };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -48,9 +52,12 @@ router.post('/', async (req, res) => {
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Adresse électronique invalide' });
   if (full_name.length < 2) return res.status(400).json({ error: 'Nom complet requis (il signe les commentaires)' });
   if (!ROLES.includes(b.role)) return res.status(400).json({ error: 'Rôle invalide' });
+  const fonction = b.fonction || 'titulaire';
+  if (!FONCTIONS.includes(fonction)) return res.status(400).json({ error: 'Fonction invalide' });
+  if (b.role === 'admin' && !adminAllowed(fonction)) return res.status(400).json({ error: ADMIN_RULE() });
   if (q().prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return res.status(409).json({ error: 'Cette adresse est déjà utilisée' });
-  const r = q().prepare('INSERT INTO users (email, full_name, quality, role, status, created_at, created_by) VALUES (?,?,?,?,?,?,?)')
-    .run(email, full_name, quality, b.role, 'invite', Date.now(), req.user.id);
+  const r = q().prepare(`INSERT INTO users (email, full_name, quality, role, fonction, health_professional, independent, status, created_at, created_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(email, full_name, quality, b.role, fonction, b.health_professional === false ? 0 : 1, b.independent ? 1 : 0, 'invite', Date.now(), req.user.id);
   const user = q().prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid);
   const link = await sendInvitation(user, req);
   audit.fromReq(req, 'membre_cree', email, { role: b.role });
@@ -73,6 +80,14 @@ router.patch('/:id', (req, res) => {
     changes.status = b.status;
   }
   if (b.quality !== undefined) changes.quality = String(b.quality).trim().slice(0, 120);
+  if (b.fonction !== undefined) {
+    if (!FONCTIONS.includes(b.fonction)) return res.status(400).json({ error: 'Fonction invalide' });
+    changes.fonction = b.fonction;
+  }
+  if (b.health_professional !== undefined) changes.health_professional = b.health_professional ? 1 : 0;
+  if (b.independent !== undefined) changes.independent = b.independent ? 1 : 0;
+  const nextRole = changes.role || user.role; const nextFn = changes.fonction || user.fonction;
+  if (nextRole === 'admin' && !adminAllowed(nextFn)) return res.status(400).json({ error: ADMIN_RULE() });
   if (b.full_name !== undefined) {
     if (String(b.full_name).trim().length < 2) return res.status(400).json({ error: 'Nom invalide' });
     changes.full_name = String(b.full_name).trim();
@@ -122,8 +137,8 @@ router.get('/audit/log', (req, res) => {
 });
 
 router.get('/audit/integrity', (req, res) => {
-  const r = domain.verifyIntegrity();
-  audit.fromReq(req, 'verification_integrite', '', { ok: r.ok, comments: r.comments, documents: r.documents });
+  const r = domain.recordIntegrityCheck(req.user.id, 'Contrôle périodique');
+  audit.fromReq(req, 'verification_integrite', '', { ok: r.ok, comments: r.comments, documents: r.documents, controle: r.checkId });
   res.json({ ...r, publicKey: sec.publicKeyPem() });
 });
 
