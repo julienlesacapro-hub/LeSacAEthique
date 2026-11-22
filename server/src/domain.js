@@ -189,6 +189,7 @@ function verifyIntegrity({ checkFiles = true } = {}) {
   }
   const { ob } = db.get().prepare("SELECT COUNT(*) ob FROM bulletins b JOIN scrutins s ON s.id = b.scrutin_id WHERE s.status = 'ouvert'").get();
   ballots += ob;
+  problems.push(...gov.verifyVotes());
   return { ok: problems.length === 0, comments: n, documents: files, actes, ballots, lastHash: prev, problems };
 }
 

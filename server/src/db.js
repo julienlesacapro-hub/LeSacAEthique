@@ -88,6 +88,8 @@ CREATE TABLE IF NOT EXISTS dossiers (
   source                TEXT NOT NULL DEFAULT 'site',
   created_at            INTEGER NOT NULL,
   updated_at            INTEGER NOT NULL,
+  closed_at             INTEGER,           -- clôture et archivage : le dossier passe en lecture seule
+  closed_by             INTEGER REFERENCES users(id),
   UNIQUE (year, seq)
 );
 
@@ -250,6 +252,9 @@ CREATE TABLE IF NOT EXISTS emargements (
   scrutin_id INTEGER NOT NULL REFERENCES scrutins(id),
   user_id    INTEGER NOT NULL REFERENCES users(id),
   at         INTEGER NOT NULL,
+  method     TEXT,                    -- second facteur utilisé pour signer le vote
+  hash       TEXT,
+  signature  TEXT,
   PRIMARY KEY (scrutin_id, user_id)
 );
 
@@ -260,13 +265,15 @@ CREATE TABLE IF NOT EXISTS bulletins (
   choice      TEXT NOT NULL CHECK (choice IN ('favorable','favorable_reserve','modifications','defavorable','incompetence','abstention')),
   motivation  TEXT NOT NULL DEFAULT '',
   voter_id    INTEGER REFERENCES users(id),
-  voter_name  TEXT
+  voter_name  TEXT,
+  hash        TEXT,
+  signature   TEXT
 ) WITHOUT ROWID;
 
 -- Actes produits : avis (annexe 7), procès-verbaux, rapports annuels, et leurs versions signées
 CREATE TABLE IF NOT EXISTS actes (
   id            INTEGER PRIMARY KEY,
-  type          TEXT NOT NULL CHECK (type IN ('avis','pv','rapport_annuel','rapport_validation')),
+  type          TEXT NOT NULL CHECK (type IN ('avis','pv','rapport_annuel','rapport_validation','cloture')),
   dossier_id    INTEGER REFERENCES dossiers(id),
   seance_id     INTEGER REFERENCES seances(id),
   scrutin_id    INTEGER REFERENCES scrutins(id),
@@ -282,6 +289,21 @@ CREATE TABLE IF NOT EXISTS actes (
   created_by    INTEGER REFERENCES users(id),
   created_at    INTEGER NOT NULL,
   sent_at       INTEGER
+);
+
+-- Courriels adressés aux porteurs (texte exact conservé)
+CREATE TABLE IF NOT EXISTS envois (
+  id           INTEGER PRIMARY KEY,
+  acte_id      INTEGER NOT NULL REFERENCES actes(id),
+  dossier_id   INTEGER REFERENCES dossiers(id),
+  from_email   TEXT NOT NULL,
+  to_email     TEXT NOT NULL,
+  subject      TEXT NOT NULL,
+  body         TEXT NOT NULL,
+  attachment_name   TEXT NOT NULL,
+  attachment_sha256 TEXT NOT NULL,
+  sent_by      INTEGER NOT NULL REFERENCES users(id),
+  sent_at      INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_comments_dossier ON comments(dossier_id, id);
@@ -355,6 +377,11 @@ WHEN new.sha256 IS NOT old.sha256 OR new.storage_name IS NOT old.storage_name OR
   OR new.type IS NOT old.type OR new.parent_id IS NOT old.parent_id OR new.created_at IS NOT old.created_at
 BEGIN SELECT RAISE(ABORT, 'Un acte ne peut pas être modifié'); END;
 
+CREATE TRIGGER IF NOT EXISTS envois_no_update BEFORE UPDATE ON envois
+BEGIN SELECT RAISE(ABORT, 'Un envoi ne peut pas être modifié'); END;
+CREATE TRIGGER IF NOT EXISTS envois_no_delete BEFORE DELETE ON envois
+BEGIN SELECT RAISE(ABORT, 'Un envoi ne peut pas être supprimé'); END;
+
 CREATE TRIGGER IF NOT EXISTS conflicts_no_update BEFORE UPDATE ON conflicts
 BEGIN SELECT RAISE(ABORT, 'Une déclaration de conflit ne peut pas être modifiée'); END;
 CREATE TRIGGER IF NOT EXISTS conflicts_no_delete BEFORE DELETE ON conflicts
@@ -363,11 +390,26 @@ BEGIN SELECT RAISE(ABORT, 'Une déclaration de conflit ne peut pas être supprim
 
 let db = null;
 
+// Ajoute les colonnes introduites par les versions récentes à une base existante.
+const ADDED_COLUMNS = [
+  ['dossiers', 'closed_at', 'INTEGER'], ['dossiers', 'closed_by', 'INTEGER'],
+  ['emargements', 'method', 'TEXT'], ['emargements', 'hash', 'TEXT'], ['emargements', 'signature', 'TEXT'],
+  ['bulletins', 'hash', 'TEXT'], ['bulletins', 'signature', 'TEXT'],
+];
+function migrate(d) {
+  for (const [table, col, type] of ADDED_COLUMNS) {
+    const exists = d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+    if (!exists) continue;
+    if (!d.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) d.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+  }
+}
+
 function open() {
   if (db) return db;
   fs.mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
   fs.mkdirSync(config.filesDir, { recursive: true, mode: 0o700 });
   db = new Database(config.dbFile);
+  migrate(db);
   db.exec(SCHEMA);
   return db;
 }

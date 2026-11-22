@@ -71,6 +71,7 @@ function build() {
       user: env('SMTP_USER', ''),
       pass: env('SMTP_PASS', ''),
       from: env('MAIL_FROM', 'CER-PROMEDNAV <ne-pas-repondre@localhost>'),
+      replyTo: env('MAIL_REPLY_TO', ''),
     },
     secretariatEmail: env('SECRETARIAT_EMAIL', ''),
     vapid: {

@@ -29,11 +29,22 @@ Saisissez votre adresse et votre mot de passe, puis le code à 6 chiffres de l'a
 ## Rapporteurs, votes et avis
 
 - **Rapporteurs.** Le président désigne deux rapporteurs, dont au moins un n'exerce pas une profession de santé. Un rapporteur peut cocher « Publier comme mon rapport » en rédigeant son analyse.
-- **Voter.** Quand un vote est ouvert, vous êtes notifié. Dans le dossier, choisissez votre position et motivez-la si elle diverge. Le vote est **définitif**. En cas de bulletin secret, votre nom n'est pas enregistré avec le bulletin. Le résultat n'apparaît qu'à la clôture.
+- **Voter et signer votre vote.** Quand un vote est ouvert, vous êtes notifié. Dans le dossier :
+  1. choisissez votre position et motivez-la si elle diverge ;
+  2. saisissez le code à 6 chiffres de votre application d'authentification : cette saisie **signe** votre vote ;
+  3. conservez le reçu affiché (l'empreinte de votre bulletin).
+
+  Le vote est **définitif**. En cas de bulletin secret, votre nom n'est pas enregistré avec le bulletin. Le résultat n'apparaît qu'à la clôture.
 - **Suppléants.** Un suppléant vote seulement s'il a été désigné pour remplacer un titulaire. Le titulaire et son suppléant ne votent pas tous les deux.
 - **Procédure simplifiée** (art. 30). Le président et un rapporteur se prononcent, sans possibilité d'avis défavorable. Tout membre peut cliquer sur « Demander l'examen en séance plénière ».
 - **Clôture du vote** (président). L'outil vérifie d'abord que rien n'a été modifié. Si ce contrôle échoue, le vote n'est pas validé.
-- **Avis** (président). L'outil produit le PDF bilingue selon l'annexe 7. Le président le signe avec son certificat qualifié, dépose la version signée, puis la transmet au porteur.
+- **Avis** (président). L'outil produit le PDF bilingue selon l'annexe 7. Ensuite :
+  1. **Imprimer** l'avis ;
+  2. le **signer à la main** et le numériser ;
+  3. **Verser l'exemplaire signé**, en recopiant le code de vérification imprimé : le dossier est alors clos et archivé en lecture seule ;
+  4. **Envoyer au porteur…** : relire et modifier si besoin l'objet et le message, puis envoyer. L'envoi part de l'adresse du comité.
+
+  Remettez l'original papier au Secrétaire général.
 - **Séances.** Le président ou le secrétariat programme les séances. À la clôture de la séance, le procès-verbal est produit automatiquement.
 - **Rapport annuel.** Menu « Séances » → « Rapport annuel ».
 

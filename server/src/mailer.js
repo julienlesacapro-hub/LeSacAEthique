@@ -24,8 +24,9 @@ function getTransport() {
   return transport;
 }
 
-async function send({ to, subject, text, attachments }) {
-  const msg = { from: config.smtp.from, to, subject: `[${config.committeeName}] ${subject}`, text, attachments };
+async function send({ to, subject, text, attachments, rawSubject = false, throwOnError = false }) {
+  const msg = { from: config.smtp.from, to, subject: rawSubject ? subject : `[${config.committeeName}] ${subject}`, text, attachments };
+  if (config.smtp.replyTo) msg.replyTo = config.smtp.replyTo;
   const t = getTransport();
   if (!t) {
     outbox.push(msg);
@@ -36,6 +37,7 @@ async function send({ to, subject, text, attachments }) {
     await t.sendMail(msg);
   } catch (e) {
     console.error('Échec d’envoi du courriel à', to, '-', e.message);
+    if (throwOnError) throw new Error(`Échec de l’envoi du courriel : ${e.message}`);
   }
 }
 

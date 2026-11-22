@@ -69,7 +69,7 @@ Chaque règle proposée est appliquée par le logiciel, sauf celles marquées *(
 
 **Article 31.3** — remplacer la deuxième phrase par :
 
-> « Il porte une référence unique (CER-PROMEDNAV-AAAA-NNN), sa date, la liste et la version des documents examinés, la qualité des membres qui ont délibéré et l'empreinte du contrôle d'intégrité préalable au vote (art. 34-7). Le président le signe par une signature électronique qualifiée au sens du règlement (UE) n° 910/2014 ou, à défaut, de sa main. »
+> « Il porte une référence unique (CER-PROMEDNAV-AAAA-NNN), sa date, la liste et la version des documents examinés, la qualité des membres qui ont délibéré, l'empreinte du contrôle d'intégrité préalable au vote (art. 34-7) et un code de vérification. Le président le signe de sa main sur l'exemplaire imprimé par l'outil ; l'exemplaire signé est numérisé et versé dans l'outil, et l'original papier est conservé par le Secrétaire général (art. 6.2). Dès qu'un prestataire de signature électronique qualifiée au sens du règlement (UE) n° 910/2014 aura été retenu par le CE, la signature électronique qualifiée pourra remplacer la signature manuscrite. »
 
 **Annexe 5 (engagement)** — ajouter :
 
@@ -227,6 +227,8 @@ c) s'il était rapporteur, sa désignation prend fin.
 
 34-9.4 Sont appelés à voter les membres votants en exercice qui ne se sont pas déportés. Un suppléant vote à la place d'un titulaire désigné par le président à l'ouverture du vote. Le titulaire et son suppléant ne peuvent pas voter tous les deux.
 
+34-9.4 bis Chaque membre signe son vote : avant d'enregistrer son bulletin, il saisit à nouveau un code de sa double authentification. Le vote est alors définitif et imputable à son auteur. L'outil signe l'émargement et le bulletin, et remet au membre un reçu (empreinte de son bulletin). En vote secret, le bulletin signé ne porte ni le nom de son auteur ni de lien avec l'émargement.
+
 34-9.5 L'outil applique les règles suivantes :
 
 a) le quorum de l'article 29.2, calculé sur le nombre des membres votants en exercice ;
@@ -259,9 +261,15 @@ f) le contrôle d'intégrité.
 
 Le président et le secrétariat signent le procès-verbal.
 
-34-10.2 Après un vote, le président établit l'avis dans l'outil, selon le modèle de l'annexe 7, en français et en anglais. Il le signe par une signature électronique qualifiée et dépose la version signée dans l'outil. L'outil vérifie que le document signé est exactement celui qu'il a produit.
+34-10.2 Après un vote, le président établit l'avis dans l'outil, selon le modèle de l'annexe 7, en français et en anglais.
 
-34-10.3 L'avis est transmis au porteur depuis l'outil, de préférence dans sa version signée.
+34-10.3 Le président imprime l'avis et le signe de sa main, ce qui authentifie la décision. Il numérise l'exemplaire signé et le verse dans l'outil, en recopiant le code de vérification imprimé sur l'avis. L'outil refuse le versement si le code ne correspond pas. L'original papier est remis au Secrétaire général, qui le conserve (art. 6.2).
+
+34-10.4 Le versement de l'avis signé clôt la procédure. L'outil effectue un contrôle d'intégrité, produit un relevé de clôture et d'archivage, puis place le dossier en lecture seule définitive. Le relevé contient la chronologie, les documents, l'intégralité des échanges, les votes et les actes, avec leurs empreintes. Une modification ultérieure du projet fait l'objet d'une nouvelle saisine (art. 32.1).
+
+34-10.5 Sur décision du président, l'outil adresse l'avis signé au porteur par courriel, depuis l'adresse électronique du comité [comite-ethique@promednav.com]. Le président peut modifier l'objet et le texte du message avant l'envoi. Le texte exact envoyé, son destinataire, sa date et l'empreinte de la pièce jointe sont conservés dans le dossier.
+
+34-10.6 Lorsqu'un prestataire de signature électronique qualifiée aura été retenu par le CE, la signature électronique qualifiée de l'avis pourra remplacer les articles 34-10.3 et 34-10.4, alinéa 1. L'outil vérifie alors que le document signé est exactement celui qu'il a produit.
 
 ## Article 34-11 — Conservation, sauvegardes et réversibilité
 
@@ -299,6 +307,8 @@ Le président et le secrétariat signent le procès-verbal.
 | 34-9.1 | Deux rapporteurs, dont un non professionnel de santé | Oui |
 | 34-9.3 | Délai minimal du vote électronique | **Non** : à respecter par le président |
 | 34-9.4 et 34-9.5 | Suppléance, quorum, majorité, vote secret, procédure simplifiée | Oui |
-| 34-10 | PV, avis bilingue, dépôt et vérification de la version signée | Oui |
+| 34-9.4 bis | Vote signé par une nouvelle saisie du code de double authentification, reçu remis au membre | Oui |
+| 34-10 | PV, avis bilingue, versement de l'exemplaire signé à la main (avec code de vérification), clôture et archivage, courriel modifiable et conservé | Oui |
+| 34-10.3 | Conservation de l'original papier par le Secrétaire général | Non : mesure organisationnelle |
 | 34-11.2 | Destruction en fin de conservation | **Non** : développement à prévoir |
 | 34-2.2 e, 34-2.3, 34-4.6, 34-7.3 (copie externe), 34-8.4 | Mesures organisationnelles | Non applicable |

@@ -60,8 +60,15 @@ function signatureBlock(doc, lines) {
   const x = doc.page.width / 2; const w = doc.page.width / 2 - doc.page.margins.right;
   for (const l of lines) doc.font(l.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).fillColor('#111').text(l.t, x, doc.y, { width: w });
   doc.rect(x, doc.y + 6, w, 58).dash(3, { space: 3 }).strokeColor('#9aa7b2').stroke().undash();
-  doc.fillColor(GREY).fontSize(7.5).text('Emplacement de la signature électronique / Signature field', x + 6, doc.y + 10, { width: w - 12 });
+  doc.fillColor(GREY).fontSize(7.5).text('Signature', x + 6, doc.y + 10, { width: w - 12 });
   doc.x = doc.page.margins.left; doc.y += 64; doc.fillColor('#111');
+}
+
+function codeLine(doc, code) {
+  if (!code) return;
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(NAVY).text(`Code de vérification : ${code}`, { align: 'right' });
+  doc.font('Helvetica').fontSize(7.5).fillColor(GREY).text('À recopier lors du versement de l’exemplaire signé dans LeSacAEthique / Verification code', { align: 'right' }).moveDown(0.5);
+  doc.fillColor('#111');
 }
 
 // ===================== AVIS (annexe 7) =====================
@@ -96,6 +103,7 @@ async function avis(d) {
   p(doc, 'Le comité rappelle que le présent avis ne vaut pas avis d’un comité de protection des personnes au sens de l’article L.1123-6 du code de la santé publique et ne dispense d’aucune formalité auprès de la CNIL.', { size: 9.5 });
   if (d.irb.iorg || d.irb.irb) small(doc, `Enregistrement OHRP : ${d.irb.iorg ? 'IORG ' + d.irb.iorg : ''} ${d.irb.irb ? 'IRB ' + d.irb.irb : ''}`);
   signatureBlock(doc, [{ t: `Fait à ${d.lieu}, le ${dFr(d.date)}.` }, { t: `${FN[d.signataireFonction] || 'Le président'} du ${d.committee},` }, { t: d.signataire, bold: true }]);
+  codeLine(doc, d.verifCode);
   small(doc, `Contrôle d’intégrité n° ${d.integrity.id} du ${dFr(d.integrity.at, true)} préalable à la validation du vote : conforme. Empreinte de référence : ${d.integrity.last_hash}.`);
 
   // ----- English version -----
@@ -113,7 +121,8 @@ async function avis(d) {
   p(doc, 'This opinion does not replace the opinion of a French Committee for the Protection of Persons (CPP) required for research involving human persons under Article L.1123-6 of the French Public Health Code.', { size: 9.5 });
   if (d.irb.iorg || d.irb.irb) small(doc, `OHRP registration: ${d.irb.iorg ? 'IORG ' + d.irb.iorg : ''} ${d.irb.irb ? 'IRB ' + d.irb.irb : ''}`);
   signatureBlock(doc, [{ t: `${d.lieu}, ${dEn(d.date)}.` }, { t: `${FN_EN[d.signataireFonction] || 'Chair'} of ${d.committee},` }, { t: d.signataire, bold: true }]);
-  footer(doc, `${d.committee} — Avis / Opinion ${d.numero}`);
+  codeLine(doc, d.verifCode);
+  footer(doc, `${d.committee} — Avis / Opinion ${d.numero} — code ${d.verifCode}`);
   doc.end();
   return done;
 }
@@ -158,7 +167,8 @@ async function pv(d) {
   small(doc, 'Toute réécriture ultérieure de l’historique des échanges rendrait cette empreinte introuvable : conservez ce procès-verbal hors de l’outil.');
   signatureBlock(doc, [{ t: `Le président du ${d.committee},` }, { t: d.closedBy.full_name, bold: true }]);
   signatureBlock(doc, [{ t: 'Le secrétariat du comité,' }, { t: ' ' }]);
-  footer(doc, `${d.committee} — Procès-verbal de la séance n° ${s.id} — confidentiel`);
+  codeLine(doc, d.verifCode);
+  footer(doc, `${d.committee} — Procès-verbal de la séance n° ${s.id} — confidentiel — code ${d.verifCode}`);
   doc.end();
   return done;
 }
@@ -192,9 +202,52 @@ async function rapport(d) {
   bullet(doc, Object.entries(st.composition).map(([k, n]) => `${d.fonctions[k] || k} : ${n}`));
   small(doc, 'Conformément à l’article 34.2 du règlement intérieur, ce rapport ne contient aucun élément confidentiel : ni titre de projet, ni nom de porteur, ni contenu des débats.');
   signatureBlock(doc, [{ t: `Fait le ${dFr(d.date)}.` }, { t: `Le président du ${d.committee},` }, { t: d.by.full_name, bold: true }]);
-  footer(doc, `${d.committee} — Rapport d’activité ${st.year}`);
+  codeLine(doc, d.verifCode);
+  footer(doc, `${d.committee} — Rapport d’activité ${st.year} — code ${d.verifCode}`);
   doc.end();
   return done;
 }
 
-module.exports = { avis, pv, rapport };
+// ===================== RELEVÉ DE CLÔTURE ET D'ARCHIVAGE =====================
+const TYPE_ACTE = { avis: 'Avis', pv: 'Procès-verbal', rapport_annuel: 'Rapport annuel', rapport_validation: 'Rapport de validation', cloture: 'Relevé de clôture' };
+const SIG_MODE = { manuscrite: 'exemplaire signé à la main, numérisé', electronique: 'signature électronique' };
+async function cloture(d) {
+  const { doc, done } = make(`Relevé de clôture ${d.dossier.reference}`, 'Relevé de clôture et d’archivage');
+  header(doc, d.committee, d.longName, 'RELEVÉ DE CLÔTURE ET D’ARCHIVAGE — CONFIDENTIEL');
+  doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(15).text(`Dossier ${d.dossier.reference}`, { align: 'center' }).moveDown(0.2);
+  doc.fillColor(GREY).font('Helvetica').fontSize(10).text(`Procédure close le ${dFr(d.date, true)} par ${d.by.full_name}`, { align: 'center' }).moveDown(0.8);
+  p(doc, `Projet : « ${d.dossier.title} ». Porteur : ${d.dossier.applicant_name} (${d.dossier.applicant_email}). Qualification : ${d.dossier.qualification}. Déposé le ${dFr(d.dossier.created_at)}.`);
+  h(doc, 'Chronologie', 11.5);
+  bullet(doc, d.events.map((e) => `${dFr(e.at, true)} — ${e.details}${e.full_name ? ` (${e.full_name})` : ''}`), 8.5);
+  h(doc, 'Rapporteurs et déports', 11.5);
+  bullet(doc, [
+    ...d.rapporteurs.map((r) => `Rapporteur : ${r.full_name}, désigné le ${dFr(r.designated_at)}${r.ended_at ? `, fin le ${dFr(r.ended_at)} (${r.end_reason})` : ''}`),
+    ...d.conflicts.map((c) => `Déport : ${c.full_name}, le ${dFr(c.declared_at)}`),
+  ].concat(d.rapporteurs.length || d.conflicts.length ? [] : ['Aucun']), 9);
+  h(doc, 'Documents du dossier', 11.5);
+  bullet(doc, d.documents.map((x) => `${x.original_name} — v${x.version} — pièce ${x.piece} — ${dFr(x.uploaded_at)} — SHA-256 ${x.sha256}`), 7.5);
+  h(doc, 'Votes', 11.5);
+  if (!d.scrutins.length) p(doc, 'Aucun vote.');
+  for (const { sc, res } of d.scrutins) {
+    const label = sc.status === 'annule' ? `annulé (${sc.cancel_reason})` : res ? `${d.choices[sc.result] || sc.result.replace(/_/g, ' ')} — ${Object.entries(res.tally.counts).filter(([, n]) => n).map(([k, n]) => `${d.choices[k]} : ${n}`).join(' ; ')} — quorum ${res.quorum.participants}/${res.quorum.needed}` : sc.status;
+    p(doc, `Scrutin n° ${sc.id} (procédure ${sc.procedure}${sc.secret ? ', bulletin secret' : ''}), ouvert le ${dFr(sc.opened_at)} : ${label}.${sc.integrity_check_id ? ` Contrôle d’intégrité n° ${sc.integrity_check_id}. Empreinte des bulletins : ${sc.tally_hash}.` : ''}`, { size: 8.5, align: 'left', gap: 0.3 });
+  }
+  h(doc, 'Actes', 11.5);
+  bullet(doc, d.actes.map((a) => { const m = JSON.parse(a.meta_json || '{}'); return `${TYPE_ACTE[a.type]} — ${a.title} — ${dFr(a.created_at)}${m.signature ? ` — ${SIG_MODE[m.signature]}` : ''}${a.sent_at ? ` — transmis le ${dFr(a.sent_at)}` : ''} — SHA-256 ${a.sha256}`; }), 7.5);
+  h(doc, `Échanges entre les membres (${d.comments.length})`, 11.5);
+  if (!d.comments.length) p(doc, 'Aucun échange.');
+  for (const c of d.comments) {
+    if (doc.y > doc.page.height - 140) doc.addPage();
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(NAVY).text(`N° ${c.id}${c.parent_id ? ` (réponse au n° ${c.parent_id})` : ''}${c.kind === 'rapport' ? ' — RAPPORT' : ''} — ${c.author_name}, ${c.author_quality} — ${dFr(c.created_at, true)}`);
+    doc.font('Helvetica').fontSize(8.5).fillColor('#111').text(c.body, { align: 'left', lineGap: 1 });
+    doc.font('Helvetica').fontSize(6.5).fillColor(GREY).text(`Empreinte ${c.hash} — signature du serveur vérifiée`).moveDown(0.5);
+  }
+  h(doc, 'Intégrité', 11.5);
+  p(doc, `Contrôle d’intégrité n° ${d.check.checkId} effectué avant la clôture : conforme (${d.check.comments} commentaires, ${d.check.documents} documents, ${d.check.ballots} bulletins, ${d.check.actes} actes). Empreinte de référence : ${d.check.lastHash}.`, { size: 9, align: 'left' });
+  small(doc, 'Le dossier est désormais en lecture seule. Les documents, échanges, votes et actes restent conservés, chiffrés, sur le serveur de l’association pendant la durée fixée par le règlement intérieur (art. 34.3).');
+  footer(doc, `${d.committee} — Relevé de clôture ${d.dossier.reference} — confidentiel`);
+  doc.end();
+  return done;
+}
+
+module.exports = { avis, pv, rapport, cloture };

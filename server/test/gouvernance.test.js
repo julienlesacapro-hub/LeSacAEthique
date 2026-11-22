@@ -10,6 +10,7 @@ process.env.NODE_ENV = 'test';
 process.env.DATA_DIR = tmp;
 process.env.KEYS_DIR = path.join(tmp, 'keys');
 process.env.PUBLIC_URL = 'http://test.local';
+process.env.MAIL_FROM = 'CER-PROMEDNAV <comite-ethique@promednav.com>';
 
 const config = require('../src/config');
 config.rebuild();
@@ -17,6 +18,8 @@ const db = require('../src/db');
 const domain = require('../src/domain');
 const mailer = require('../src/mailer');
 const { createSession } = require('../src/auth');
+const sec = require('../src/security');
+const totp = require('../src/totp');
 const { createApp } = require('../src/app');
 
 let server, base;
@@ -25,11 +28,18 @@ const PDF = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
 const fakeReq = { ip: '127.0.0.1', get: () => 'test' };
 
 function mkUser(key, { role = 'ecriture', fonction = 'titulaire', hp = 1, indep = 0, quality }) {
-  const r = db.get().prepare(`INSERT INTO users (email, full_name, quality, role, fonction, health_professional, independent, status, password_hash, totp_enabled, created_at)
-    VALUES (?,?,?,?,?,?,?,'actif','x',1,?)`).run(`${key}@cer.test`, key.toUpperCase(), quality || fonction, role, fonction, hp, indep, Date.now());
+  const r = db.get().prepare(`INSERT INTO users (email, full_name, quality, role, fonction, health_professional, independent, status, password_hash, totp_enabled, totp_secret, created_at)
+    VALUES (?,?,?,?,?,?,?,'actif','x',1,?,?)`).run(`${key}@cer.test`, key.toUpperCase(), quality || fonction, role, fonction, hp, indep, sec.encryptText(totp.generateSecret()), Date.now());
   U[key] = db.get().prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid);
   T[key] = createSession(U[key], 'full', fakeReq);
 }
+
+function code(key) {
+  const u = db.get().prepare('SELECT * FROM users WHERE id = ?').get(U[key].id);
+  db.get().prepare('UPDATE users SET totp_last_step = 0 WHERE id = ?').run(u.id);
+  return totp.hotp(totp.base32Decode(sec.decryptText(u.totp_secret)), totp.currentStep());
+}
+const voteAs = (who, sid, choice, motivation) => api('POST', `/api/gov/scrutins/${sid}/vote`, who, { choice, motivation, code: code(who) });
 
 async function api(method, url, who, body, form) {
   const headers = { Authorization: `Bearer ${T[who]}` };
@@ -112,7 +122,10 @@ test('scrutin secret avec suppléant : un vote par siège, bulletins anonymes et
   assert.equal(r.status, 201, JSON.stringify(r.body));
   S.sc = r.body.scrutin;
   assert.equal(S.sc.electeurs.length, 6);
-  const vote = (who, choice, motivation) => api('POST', `/api/gov/scrutins/${S.sc.id}/vote`, who, { choice, motivation });
+  const vote = (who, choice, motivation) => voteAs(who, S.sc.id, choice, motivation);
+  // sans code de double authentification, le vote n'est ni signé ni enregistré
+  r = await api('POST', `/api/gov/scrutins/${S.sc.id}/vote`, 'pres', { choice: 'favorable', code: '000000' });
+  assert.equal(r.status, 401);
   assert.equal((await vote('pres', 'favorable')).status, 200);
   assert.equal((await vote('t1', 'favorable', 'Conforme')).status, 200);
   assert.equal((await vote('t2', 'defavorable', 'Information des plongeurs insuffisante')).status, 200);
@@ -126,6 +139,9 @@ test('scrutin secret avec suppléant : un vote par siège, bulletins anonymes et
   const rows = db.get().prepare('SELECT * FROM bulletins WHERE scrutin_id = ?').all(S.sc.id);
   assert.equal(rows.length, 5);
   assert.ok(rows.every((b) => b.voter_id === null && b.voter_name === null));
+  assert.ok(rows.every((b) => b.hash && sec.verifySignature(b.hash, b.signature))); // bulletins signés
+  const ems = db.get().prepare('SELECT * FROM emargements WHERE scrutin_id = ?').all(S.sc.id);
+  assert.ok(ems.every((e) => e.method === 'totp' && sec.verifySignature(e.hash, e.signature)));
   assert.throws(() => db.get().prepare("UPDATE bulletins SET choice = 'defavorable'").run(), /ne peut pas être modifié/);
   assert.throws(() => db.get().prepare('DELETE FROM bulletins').run(), /ne peut pas être supprimé/);
   // résultat invisible avant la clôture
@@ -205,12 +221,74 @@ test('signature qualifiée : seule une version signée de l’acte exact est acc
   assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.equal(r.body.acte.signed, true);
   assert.equal(r.body.acte.meta.subFilter, 'ETSI.CAdES.detached');
-  mailer.outbox.length = 0;
-  r = await api('POST', `/api/gov/actes/${S.avis.id}/transmettre`, 'pres', {});
+});
+
+test('exemplaire signé à la main : code de vérification exigé, puis clôture et archivage', async () => {
+  const meta = db.get().prepare('SELECT meta_json FROM actes WHERE id = ?').get(S.avis.id);
+  const verif = JSON.parse(meta.meta_json).verifCode;
+  assert.match(verif, /^[A-Z2-7]{4}-[A-Z2-7]{4}$/);
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64)]);
+  const send = (c) => { const f = new FormData(); f.append('file', new Blob([PNG]), 'scan.png'); f.set('code', c); return api('POST', `/api/gov/actes/${S.avis.id}/signe-manuscrit`, 'pres', undefined, f); };
+  let r = await send('AAAA-BBBB');
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /code de vérification/);
+  r = await send(verif.toLowerCase());
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.acte.meta.signature, 'manuscrite');
+  assert.ok(r.body.closure, r.body.closureError);
+  const d = domain.getDossier(S.d1.id);
+  assert.ok(d.closed_at);
+  assert.equal(d.status, 'clos');
+  r = await api('GET', `/api/gov/actes/${r.body.closure.acte.id}/content`, 'pres');
+  assert.equal(r.body.subarray(0, 5).toString(), '%PDF-');
+  const scan = db.get().prepare("SELECT id FROM actes WHERE original_name LIKE '%signe.png'").get();
+  r = await api('GET', `/api/gov/actes/${scan.id}/content`, 't3');
   assert.equal(r.status, 200);
-  assert.equal(r.body.signed, true);
-  assert.equal(mailer.outbox[0].to, 'porteur@hopital.test');
-  assert.match(mailer.outbox[0].attachments[0].filename, /-signe\.pdf$/);
+  assert.deepEqual(r.body, PNG);
+});
+
+test('dossier clos : lecture seule pour tous', async () => {
+  let r = await api('POST', `/api/dossiers/${S.d1.id}/comments`, 'pres', { body: 'Après clôture' });
+  assert.equal(r.status, 409);
+  r = await api('PATCH', `/api/dossiers/${S.d1.id}`, 'pres', { status: 'instruction' });
+  assert.equal(r.status, 409);
+  r = await api('POST', `/api/gov/dossiers/${S.d1.id}/rapporteurs`, 'pres', { user_id: U.t3.id });
+  assert.equal(r.status, 400);
+  r = await api('GET', `/api/dossiers/${S.d1.id}`, 't3');
+  assert.equal(r.status, 200);
+  assert.equal(r.body.canWrite, false);
+  assert.ok(r.body.closed);
+});
+
+test('courriel au porteur : brouillon modifiable, envoyé depuis l’adresse du comité, conservé', async () => {
+  let r = await api('GET', `/api/gov/actes/${S.avis.id}/courriel`, 'pres');
+  assert.equal(r.status, 200);
+  assert.equal(r.body.draft.to, 'porteur@hopital.test');
+  assert.match(r.body.draft.subject, /Avis du CER-PROMEDNAV/);
+  mailer.outbox.length = 0;
+  r = await api('POST', `/api/gov/actes/${S.avis.id}/transmettre`, 't1', { subject: 'x', body: 'y' });
+  assert.equal(r.status, 403);
+  r = await api('POST', `/api/gov/actes/${S.avis.id}/transmettre`, 'pres', { subject: 'Votre avis — dossier A', body: 'Texte modifié par le président.' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const m = mailer.outbox[0];
+  assert.equal(m.to, 'porteur@hopital.test');
+  assert.equal(m.subject, 'Votre avis — dossier A'); // objet exact, sans préfixe
+  assert.equal(m.text, 'Texte modifié par le président.');
+  assert.equal(m.from, config.smtp.from);
+  assert.match(m.attachments[0].filename, /-signe\.(png|pdf)$/);
+  const env = db.get().prepare('SELECT * FROM envois').all();
+  assert.equal(env.length, 1);
+  assert.throws(() => db.get().prepare("UPDATE envois SET body = 'x'").run(), /ne peut pas être modifié/);
+});
+
+test('signature d’un vote falsifiée : détectée', () => {
+  db.get().exec('DROP TRIGGER emargements_no_update');
+  const e = db.get().prepare('SELECT * FROM emargements LIMIT 1').get();
+  db.get().prepare('UPDATE emargements SET at = at + 1 WHERE scrutin_id = ? AND user_id = ?').run(e.scrutin_id, e.user_id);
+  assert.ok(domain.verifyIntegrity().problems.some((p) => p.includes('Émargement')));
+  db.get().prepare('UPDATE emargements SET at = ? WHERE scrutin_id = ? AND user_id = ?').run(e.at, e.scrutin_id, e.user_id);
+  db.get().exec(db.SCHEMA);
+  assert.equal(domain.verifyIntegrity().ok, true);
 });
 
 test('procédure simplifiée : pas d’avis défavorable ; examen plénier sur demande d’un membre', async () => {
@@ -218,10 +296,10 @@ test('procédure simplifiée : pas d’avis défavorable ; examen plénier sur d
   let r = await api('POST', `/api/gov/dossiers/${S.d2.id}/scrutins`, 'pres', { procedure: 'simplifiee', rapporteur_id: U.t1.id });
   assert.equal(r.status, 201, JSON.stringify(r.body));
   const sid = r.body.scrutin.id;
-  r = await api('POST', `/api/gov/scrutins/${sid}/vote`, 't1', { choice: 'defavorable' });
+  r = await voteAs('t1', sid, 'defavorable');
   assert.equal(r.status, 400);
   assert.match(r.body.error, /art\. 30\.2/);
-  r = await api('POST', `/api/gov/scrutins/${sid}/vote`, 't2', { choice: 'favorable' });
+  r = await voteAs('t2', sid, 'favorable');
   assert.equal(r.status, 400); // non appelé à voter
   r = await api('POST', `/api/gov/dossiers/${S.d2.id}/pleniere`, 't2');
   assert.equal(r.status, 200);
@@ -234,7 +312,7 @@ test('quorum non atteint : aucun avis possible', async () => {
   await api('POST', `/api/gov/dossiers/${S.d3.id}/rapporteurs`, 'pres', { user_id: U.t2.id });
   let r = await api('POST', `/api/gov/dossiers/${S.d3.id}/scrutins`, 'pres', { seance_id: S.seance.id });
   const sid = r.body.scrutin.id;
-  await api('POST', `/api/gov/scrutins/${sid}/vote`, 'pres', { choice: 'favorable' });
+  await voteAs('pres', sid, 'favorable');
   r = await api('POST', `/api/gov/scrutins/${sid}/cloture`, 'pres');
   assert.equal(r.body.scrutin.result, 'quorum_non_atteint');
   r = await api('POST', `/api/gov/dossiers/${S.d3.id}/avis`, 'pres', { scrutin_id: sid, motivation: 'x' });

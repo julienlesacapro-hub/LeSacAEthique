@@ -429,7 +429,7 @@ async function viewDossier(id) {
   try { data = await api('GET', `/dossiers/${id}`); } catch (e) {
     return shell('/dossiers', h('a', { href: '#/dossiers' }, '← Dossiers'), h('p', { class: e.body && e.body.recused ? 'alert warn' : 'alert err' }, e.message));
   }
-  const { dossier: d, documents, comments, events, conflicts, lastReadCommentId, canWrite, isAdmin, canManage, isRapporteur } = data;
+  const { dossier: d, documents, comments, events, conflicts, lastReadCommentId, canWrite, isAdmin, canManage, isRapporteur, closed } = data;
   const extra = isAdmin ? await Promise.all([api('GET', '/gov/membres'), api('GET', '/gov/seances')]).catch(() => null) : null;
   const docsById = Object.fromEntries(documents.map((x) => [x.id, x]));
   refreshUnread();
@@ -526,6 +526,7 @@ async function viewDossier(id) {
   shell('/dossiers',
     h('a', { href: '#/dossiers', class: 'small' }, '← Dossiers'),
     h('div', { class: 'row between', style: null }, h('div', {}, h('div', { class: 'ref muted small' }, d.reference), h('h1', {}, d.title)), statusPill(d.status)),
+    closed ? h('p', { class: 'alert ok' }, `Procédure close et dossier archivé le ${fmtDate(closed.at)} par ${closed.by}. Le dossier est en lecture seule ; le relevé de clôture figure dans les actes.`) : null,
     h('div', { class: 'dossier-grid' },
       h('div', { class: 'stack' },
         h('section', { class: 'card' }, h('h2', {}, 'Demande'),
@@ -548,7 +549,7 @@ async function viewDossier(id) {
           h('ul', {}, events.map((e) => h('li', {}, `${fmtDate(e.at)} — ${e.details}${e.full_name ? ' (' + e.full_name + ')' : ''}`)))),
         ...govSections(data, extra, id),
         adminBox,
-        recuse),
+        closed ? null : recuse),
       h('section', { class: 'stack', 'aria-label': 'Discussion' },
         h('div', { class: 'row between' }, h('h2', {}, `Discussion (${comments.length})`),
           !canWrite ? h('span', { class: 'pill' }, 'Lecture seule') : null),
@@ -793,7 +794,7 @@ async function viewAudit() {
 
 // ===================== Instruction et délibération =====================
 const CH = () => S.gov.choices;
-const ACTE_TYPES = { avis: 'Avis', pv: 'Procès-verbal', rapport_annuel: 'Rapport annuel', rapport_validation: 'Rapport de validation de signature' };
+const ACTE_TYPES = { avis: 'Avis', pv: 'Procès-verbal', rapport_annuel: 'Rapport annuel', rapport_validation: 'Rapport de validation de signature', cloture: 'Relevé de clôture et d’archivage' };
 const MODE = { presentiel: 'Présentiel', visio: 'Visioconférence', electronique: 'Délibération par voie électronique' };
 const DECISIONS = ['favorable', 'favorable_reserve', 'modifications', 'defavorable', 'incompetence'];
 const actBtn = (label, fn, cls = 'secondary small') => h('button', { class: cls, onclick: async () => { try { await fn(); } catch (e) { toast(e.message); } } }, label);
@@ -802,7 +803,7 @@ function govSections(data, extra, id) {
   const { rapporteurs, scrutins, actes, isAdmin, isMember } = data;
   const reload = () => viewDossier(id);
   let designate = null;
-  if (isAdmin && rapporteurs.length < 2 && extra) {
+  if (isAdmin && rapporteurs.length < 2 && extra && !data.closed) {
     const sel = h('select', { name: 'user_id', 'aria-label': 'Membre à désigner' }, extra[0].membres
       .filter((m) => ['president', 'vice_president', 'titulaire', 'suppleant'].includes(m.fonction) && !rapporteurs.some((r) => r.user_id === m.id))
       .map((m) => h('option', { value: m.id }, `${m.full_name} — ${m.quality || S.gov.fonctions[m.fonction]}${m.health_professional ? '' : ' (non professionnel de santé)'}`)));
@@ -814,7 +815,7 @@ function govSections(data, extra, id) {
   const rapp = h('section', { class: 'card stack' }, h('h2', {}, 'Rapporteurs'),
     rapporteurs.length ? h('ul', { class: 'plain' }, rapporteurs.map((r) => h('li', { class: 'row between' },
       h('span', {}, h('b', {}, r.full_name), ` — ${r.quality || ''}${r.health_professional ? '' : ' · non professionnel de santé'}`),
-      isAdmin ? actBtn('Mettre fin', async () => {
+      isAdmin && !data.closed ? actBtn('Mettre fin', async () => {
         const reason = prompt('Motif de fin de désignation :'); if (!reason) return;
         await api('POST', `/gov/dossiers/${id}/rapporteurs/${r.user_id}/fin`, { reason }); reload();
       }) : null))) : h('p', { class: 'muted small' }, 'Aucun rapporteur désigné.'),
@@ -824,7 +825,14 @@ function govSections(data, extra, id) {
   const delib = h('section', { class: 'card stack' }, h('h2', {}, 'Délibération et vote'));
   const open = scrutins.find((s) => s.status === 'ouvert');
   for (const sc of scrutins.slice().reverse()) delib.append(scrutinBlock(sc, data, id, reload));
-  if (isAdmin && !open && extra) delib.append(openScrutinForm(data, extra, id, reload));
+  if (isAdmin && !open && extra && !data.closed) delib.append(openScrutinForm(data, extra, id, reload));
+  const avisSigned = actes.some((a) => a.type === 'avis' && a.has_signed_version);
+  if (isAdmin && !data.closed && avisSigned && !open) {
+    delib.append(actBtn('Clore la procédure et archiver le dossier', async () => {
+      if (!confirm('Le dossier sera clos et archivé en lecture seule définitive. Continuer ?')) return;
+      const r = await api('POST', `/gov/dossiers/${id}/cloture`); toast(`Dossier clos (contrôle d’intégrité n° ${r.checkId})`); reload();
+    }, 'small'));
+  }
   if (!scrutins.length && !isAdmin) delib.append(h('p', { class: 'muted small' }, 'Aucun vote pour l’instant.'));
   if (open && open.procedure === 'simplifiee' && isMember) {
     delib.append(actBtn('Demander l’examen en séance plénière (art. 30.2)', async () => {
@@ -848,15 +856,20 @@ function scrutinBlock(sc, data, id, reload) {
     const f = h('form', { class: 'stack' },
       h('fieldset', { class: 'choices' }, h('legend', {}, 'Votre vote'), choices.map(([k, v]) => h('label', { class: 'check' }, h('input', { type: 'radio', name: 'choice', value: k, required: true }), v))),
       field('Motivation (consignée au procès-verbal si votre avis diverge)', h('textarea', { name: 'motivation', maxlength: 4000 })),
-      h('p', { class: 'hint' }, sc.secret ? 'Vote secret : votre bulletin est enregistré sans votre nom. Il est définitif.' : 'Votre bulletin est nominatif et définitif.'),
-      h('button', { type: 'submit' }, 'Voter (définitif)'));
+      field('Signer mon vote : code de mon application d’authentification', h('input', { name: 'code', class: 'otp', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 11, required: true })),
+      h('p', { class: 'hint' }, `${sc.secret ? 'Vote secret : votre bulletin est enregistré et signé sans votre nom.' : 'Votre bulletin est nominatif.'} La saisie du code vaut signature : le vote est définitif.`),
+      h('button', { type: 'submit' }, 'Signer et voter'));
     f.addEventListener('submit', submitting(f, async (fd) => {
       if (!fd.get('choice')) throw new Error('Choisissez une option');
       if (!confirm(`Confirmer votre vote : « ${CH()[fd.get('choice')]} » ? Il ne pourra pas être modifié.`)) return;
-      await api('POST', `/gov/scrutins/${sc.id}/vote`, { choice: fd.get('choice'), motivation: fd.get('motivation') }); toast('Vote enregistré'); reload();
+      const r = await api('POST', `/gov/scrutins/${sc.id}/vote`, { choice: fd.get('choice'), motivation: fd.get('motivation'), code: String(fd.get('code')).trim() });
+      try { localStorage.setItem(`recu-${sc.id}`, r.receipt); } catch { /* stockage indisponible */ }
+      modal('Vote signé et enregistré', h('div', { class: 'stack' }, h('p', {}, `Votre vote « ${CH()[fd.get('choice')]} » est signé et enregistré le ${fmtDate(r.at)}.`),
+        h('p', { class: 'small' }, 'Reçu (empreinte de votre bulletin), à conserver si vous souhaitez vérifier plus tard que votre bulletin a été compté :'), h('p', { class: 'mono' }, r.receipt)));
+      reload();
     }));
     box.append(f);
-  } else if (sc.hasVoted && sc.status === 'ouvert') box.append(h('p', { class: 'alert ok small' }, 'Votre vote est enregistré. Le résultat sera visible à la clôture.'));
+  } else if (sc.hasVoted && sc.status === 'ouvert') box.append(h('p', { class: 'alert ok small' }, 'Votre vote est signé et enregistré. Le résultat sera visible à la clôture.'));
   if (sc.status === 'ouvert' && data.isAdmin) {
     const err = h('div');
     box.append(h('div', { class: 'row' },
@@ -877,7 +890,7 @@ function scrutinBlock(sc, data, id, reload) {
     if (sc.divergent && sc.divergent.length) box.append(h('details', {}, h('summary', { class: 'small' }, `Opinions divergentes (${sc.divergent.length})`), h('ul', { class: 'small' }, sc.divergent.map((x) => h('li', {}, `${CH()[x.choice]}${x.motivation ? ' — ' + x.motivation : ''}`)))));
     if (sc.ballots) box.append(h('details', {}, h('summary', { class: 'small' }, 'Bulletins nominatifs'), h('ul', { class: 'small' }, sc.ballots.map((b) => h('li', {}, `${b.voter_name} : ${CH()[b.choice]}${b.motivation ? ' — ' + b.motivation : ''}`)))));
     box.append(h('p', { class: 'hint mono' }, `Contrôle d’intégrité n° ${sc.integrity_check_id} conforme · empreinte des bulletins ${(sc.tally_hash || '').slice(0, 16)}…`));
-    if (data.isAdmin && !sc.avis && DECISIONS.includes(sc.result)) box.append(avisForm(sc, id, reload));
+    if (data.isAdmin && !sc.avis && !data.closed && DECISIONS.includes(sc.result)) box.append(avisForm(sc, id, reload));
   }
   return box;
 }
@@ -915,7 +928,7 @@ function avisForm(sc, id, reload) {
     field('Motivation (français) *', h('textarea', { name: 'motivation', required: true })),
     field('Motivation (anglais, facultative)', h('textarea', { name: 'motivation_en' })),
     field('Validité en mois (36 au plus, art. 31.4)', h('input', { type: 'number', name: 'validity_months', min: 1, max: 36, value: 36 })),
-    h('p', { class: 'hint' }, 'L’avis est produit en PDF (français et anglais) à votre nom, avec la liste et la version des documents examinés. Signez-le ensuite avec votre certificat qualifié, puis déposez la version signée.'),
+    h('p', { class: 'hint' }, 'L’avis est produit en PDF (français et anglais) à votre nom, avec la liste et la version des documents examinés et un code de vérification. Imprimez-le, signez-le à la main, puis versez l’exemplaire numérisé : le dossier est alors clos et archivé.'),
     h('button', { type: 'submit' }, 'Produire l’avis'));
   f.addEventListener('submit', submitting(f, async (fd) => {
     await api('POST', `/gov/dossiers/${id}/avis`, { scrutin_id: sc.id, motivation: fd.get('motivation'), motivation_en: fd.get('motivation_en'), validity_months: +fd.get('validity_months') });
@@ -924,20 +937,74 @@ function avisForm(sc, id, reload) {
   return f;
 }
 
+const SIG_LABEL = { manuscrite: 'exemplaire signé à la main', electronique: 'signature électronique' };
 function actesList(actes, isAdmin, reload) {
+  const signable = (a) => isAdmin && !a.signed && !a.parent_id && ['avis', 'pv', 'rapport_annuel'].includes(a.type);
   return h('ul', { class: 'doc-list' }, actes.map((a) => h('li', {},
-    h('button', { onclick: () => openBlobViewer(a.original_name, `/gov/actes/${a.id}/content`, 'application/pdf', a.sha256) },
-      h('span', { class: 'doc-icon' }, a.signed ? 'SIGNÉ' : 'PDF'),
-      h('span', {}, a.title, h('span', { class: 'piece' }, `${ACTE_TYPES[a.type]} · ${fmtDate(a.created_at)}${a.created_by_name ? ` · ${a.created_by_name}` : ''}${a.signed ? ' · signature électronique déposée' : ''}${a.sent_at ? ` · transmis le ${fmtDate(a.sent_at, false)}` : ''}`))),
-    isAdmin && !a.signed && a.type !== 'rapport_validation' ? h('div', { class: 'row acte-actions' },
-      actBtn('Déposer la version signée', () => uploadSigned(a, reload)),
-      a.type === 'avis' ? actBtn('Transmettre au porteur', async () => {
-        try { await api('POST', `/gov/actes/${a.id}/transmettre`, {}); } catch (e) {
-          if (!(e.body && e.body.needsConfirmation) || !confirm(e.message)) throw e;
-          await api('POST', `/gov/actes/${a.id}/transmettre`, { sans_signature_qualifiee: true });
-        }
-        toast('Avis transmis au porteur'); reload();
-      }) : null) : null)));
+    h('button', { onclick: () => openBlobViewer(a.original_name, `/gov/actes/${a.id}/content`, a.mime || 'application/pdf', a.sha256) },
+      h('span', { class: 'doc-icon' }, a.signed ? 'SIGNÉ' : (a.original_name.split('.').pop() || 'pdf').toUpperCase().slice(0, 4)),
+      h('span', {}, a.title, h('span', { class: 'piece' }, [
+        ACTE_TYPES[a.type], fmtDate(a.created_at), a.created_by_name,
+        a.meta.signature ? SIG_LABEL[a.meta.signature] : null,
+        signable(a) && a.meta.verifCode ? `code de vérification ${a.meta.verifCode}` : null,
+        a.sent_at ? `adressé au porteur le ${fmtDate(a.sent_at, false)}` : null,
+      ].filter(Boolean).join(' · ')))),
+    signable(a) ? h('div', { class: 'row acte-actions' },
+      a.has_signed_version ? null : actBtn('1. Imprimer', () => downloadActe(a)),
+      a.has_signed_version ? null : actBtn('2. Verser l’exemplaire signé', () => uploadHandwritten(a, reload), 'small'),
+      a.type === 'avis' && a.has_signed_version ? actBtn('Envoyer au porteur…', () => mailAvis(a, reload), 'small') : null,
+      a.has_signed_version ? null : h('details', { class: 'small' }, h('summary', {}, 'Signature électronique qualifiée (si disponible)'), actBtn('Déposer la version signée électroniquement', () => uploadSigned(a, reload)))) : null)));
+}
+
+async function downloadActe(a) {
+  const r = await api('GET', `/gov/actes/${a.id}/content?download=1`, undefined, { raw: true });
+  const link = h('a', { href: URL.createObjectURL(await r.blob()), download: a.original_name });
+  document.body.append(link); link.click(); setTimeout(() => { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
+  toast('Imprimez l’acte, signez-le à la main, puis numérisez-le');
+}
+
+function uploadHandwritten(a, reload) {
+  const isAvis = a.type === 'avis';
+  const f = h('form', { class: 'stack' },
+    h('ol', { class: 'small' },
+      h('li', {}, 'Imprimez l’acte et signez-le à la main.'),
+      h('li', {}, 'Numérisez toutes les pages (scanner ou application de numérisation du téléphone), en un seul PDF de préférence.'),
+      h('li', {}, 'Recopiez le code de vérification imprimé sur l’acte : il prouve que l’exemplaire versé est bien ce document.'),
+      h('li', {}, 'Conservez l’original papier : le Secrétaire général l’archive (art. 6.2).')),
+    field('Exemplaire signé numérisé (PDF, JPEG ou PNG)', h('input', { type: 'file', name: 'file', accept: '.pdf,.jpg,.jpeg,.png', required: true })),
+    field('Code de vérification imprimé sur l’acte', h('input', { name: 'code', placeholder: 'XXXX-XXXX', autocomplete: 'off', required: true })),
+    field('Note (facultative)', h('input', { name: 'note' })),
+    isAvis ? h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'cloturer', checked: true }), 'Clore la procédure et archiver le dossier (lecture seule définitive)') : null,
+    h('button', { type: 'submit' }, isAvis ? 'Verser et clore' : 'Verser'));
+  const dlg = modal(`Exemplaire signé — ${a.title}`, f);
+  f.addEventListener('submit', submitting(f, async (fd) => {
+    fd.set('cloturer', fd.get('cloturer') ? 'true' : 'false');
+    if (isAvis && fd.get('cloturer') === 'true' && !confirm('Le dossier sera clos et archivé : plus aucun commentaire, document ni vote ne pourra y être ajouté. Continuer ?')) return;
+    const r = await api('POST', `/gov/actes/${a.id}/signe-manuscrit`, fd);
+    dlg.close();
+    if (r.closure) toast(`Exemplaire versé — dossier clos et archivé (contrôle d’intégrité n° ${r.closure.checkId})`);
+    else if (r.closureError) toast(`Exemplaire versé, mais clôture impossible : ${r.closureError}`);
+    else toast('Exemplaire signé versé');
+    reload();
+  }));
+}
+
+async function mailAvis(a, reload) {
+  const { draft, envois } = await api('GET', `/gov/actes/${a.id}/courriel`);
+  const f = h('form', { class: 'stack' },
+    h('dl', { class: 'kv small' }, h('dt', {}, 'De'), h('dd', {}, draft.from), draft.replyTo ? [h('dt', {}, 'Réponses à'), h('dd', {}, draft.replyTo)] : null,
+      h('dt', {}, 'À'), h('dd', {}, draft.to), h('dt', {}, 'Pièce jointe'), h('dd', {}, draft.attachment ? `${draft.attachment.name} (${SIG_LABEL[draft.attachment.signature]})` : '—')),
+    field('Objet', h('input', { name: 'subject', value: draft.subject, required: true, maxlength: 300 })),
+    field('Message', h('textarea', { name: 'body', required: true, rows: 14 }, draft.body)),
+    envois.length ? h('p', { class: 'alert warn small' }, `Déjà envoyé ${envois.length} fois (dernier envoi le ${fmtDate(envois[envois.length - 1].sent_at)} par ${envois[envois.length - 1].full_name}).`) : null,
+    h('p', { class: 'hint' }, 'Le texte exact envoyé est conservé dans le dossier.'),
+    h('button', { type: 'submit' }, 'Envoyer au porteur'));
+  const dlg = modal('Envoyer l’avis signé au porteur', f);
+  f.addEventListener('submit', submitting(f, async (fd) => {
+    if (!confirm(`Envoyer l’avis à ${draft.to} ?`)) return;
+    await api('POST', `/gov/actes/${a.id}/transmettre`, { subject: fd.get('subject'), body: fd.get('body') });
+    dlg.close(); toast('Avis envoyé au porteur'); reload();
+  }));
 }
 
 function modal(title, content) {

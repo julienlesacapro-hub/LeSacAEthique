@@ -5,6 +5,17 @@ subtitle: "LeSacAEthique — CER-PROMEDNAV"
 
 Les mentions « Interprétation » signalent une analyse et non un fait établi par un texte. Les tarifs viennent de pages commerciales ou de comparatifs consultés en novembre 2026 : vérifiez-les avant tout achat.
 
+# 0. Procédure transitoire retenue (en vigueur dans l'outil)
+
+En attendant le choix d'un prestataire de signature qualifiée :
+
+1. **Les membres signent leur vote dans l'outil.** Ils saisissent à nouveau un code de double authentification. L'émargement et le bulletin reçoivent une empreinte et une signature du serveur, et le membre reçoit un reçu. C'est une signature électronique simple au sens d'eIDAS (art. 3, 10°), imputable grâce à l'authentification forte.
+2. **Le président imprime l'avis et le signe à la main.** L'avis porte un code de vérification.
+3. **Il verse l'exemplaire numérisé dans l'outil**, en recopiant ce code. L'outil refuse le versement si le code ne correspond pas. Puis il clôt la procédure : contrôle d'intégrité, relevé de clôture, dossier en lecture seule.
+4. **Sur décision du président, l'outil envoie l'avis signé au porteur** depuis l'adresse du comité (`MAIL_FROM`, par exemple `comite-ethique@promednav.com`). Le président peut modifier l'objet et le texte. Le texte exact envoyé est conservé.
+
+**Valeur juridique (Interprétation).** L'original est l'exemplaire papier signé. Le fichier versé et envoyé au porteur en est une **copie**. Le Code civil (art. 1379) donne à une copie fiable la même force probante que l'original. La fiabilité est appréciée par le juge, sauf procédés présumés fiables par décret. **Conservez donc l'original papier** : le Secrétaire général l'archive (art. 6.2). En cas de contestation, c'est lui qui fait foi.
+
 # 1. Ce que dit le droit
 
 | Point | Règle | Source |

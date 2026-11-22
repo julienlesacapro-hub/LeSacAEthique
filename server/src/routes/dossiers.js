@@ -22,6 +22,13 @@ const upload = multer({
   limits: { fileSize: config.maxUploadMb * 1024 * 1024, files: config.maxFilesPerSubmission },
 });
 
+const lockedMsg = 'Dossier clos et archivé : il est en lecture seule.';
+function loadOpenDossier(req, res) {
+  const d = loadDossier(req, res);
+  if (d && d.closed_at) { res.status(409).json({ error: lockedMsg }); return null; }
+  return d;
+}
+
 function loadDossier(req, res) {
   const d = domain.getDossier(req.params.id);
   if (!d) { res.status(404).json({ error: 'Dossier introuvable' }); return null; }
@@ -74,7 +81,8 @@ router.get('/:id', (req, res) => {
     rapporteurs: gov.activeRapporteurs(d.id).map((r) => ({ user_id: r.user_id, full_name: r.full_name, quality: r.quality, health_professional: !!r.health_professional, designated_at: r.designated_at })),
     scrutins, actes,
     lastReadCommentId: prev ? prev.last_read_comment_id : 0,
-    canWrite: req.user.role !== 'lecture', isAdmin: req.user.role === 'admin', canManage: gov.canManageDossiers(req.user),
+    canWrite: req.user.role !== 'lecture' && !d.closed_at, isAdmin: req.user.role === 'admin', canManage: gov.canManageDossiers(req.user) && !d.closed_at,
+    closed: d.closed_at ? { at: d.closed_at, by: q().prepare('SELECT full_name FROM users WHERE id = ?').get(d.closed_by)?.full_name } : null,
     isRapporteur: gov.isRapporteur(req.user.id, d.id), isMember: [...gov.VOTING, 'suppleant'].includes(req.user.fonction),
   });
 });
@@ -98,7 +106,7 @@ router.get('/:id/documents/:docId/content', (req, res) => {
 
 // ----- Commentaires : ajout uniquement, jamais de modification ni de suppression -----
 router.post('/:id/comments', requireRole('ecriture'), async (req, res) => {
-  const d = loadDossier(req, res); if (!d) return;
+  const d = loadOpenDossier(req, res); if (!d) return;
   const b = req.body || {};
   const body = String(b.body || '').replace(/\r\n/g, '\n').trim();
   if (!body) return res.status(400).json({ error: 'Commentaire vide' });
@@ -137,7 +145,7 @@ router.delete('/:id/comments/:cid', immutable);
 
 // ----- Déport pour conflit d'intérêts (art. 4.2) -----
 router.post('/:id/conflicts', (req, res) => {
-  const d = loadDossier(req, res); if (!d) return;
+  const d = loadOpenDossier(req, res); if (!d) return;
   const reason = String((req.body || {}).reason || '').trim();
   if (reason.length < 3) return res.status(400).json({ error: 'Précisez la nature du conflit d’intérêts' });
   q().prepare('INSERT INTO conflicts (dossier_id, user_id, reason, declared_at) VALUES (?,?,?,?)').run(d.id, req.user.id, reason.slice(0, 1000), Date.now());
@@ -150,7 +158,7 @@ router.post('/:id/conflicts', (req, res) => {
 
 // ----- Administration du dossier -----
 router.patch('/:id', manager, (req, res) => {
-  const d = loadDossier(req, res); if (!d) return;
+  const d = loadOpenDossier(req, res); if (!d) return;
   const b = req.body || {};
   const changes = [];
   if (b.status !== undefined) {
@@ -176,7 +184,7 @@ router.patch('/:id', manager, (req, res) => {
 });
 
 router.post('/:id/documents', manager, upload.array('files'), async (req, res) => {
-  const d = loadDossier(req, res); if (!d) return;
+  const d = loadOpenDossier(req, res); if (!d) return;
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ error: 'Aucun fichier' });
   for (const f of files) { const err = domain.checkFile(f); if (err) return res.status(400).json({ error: err }); }

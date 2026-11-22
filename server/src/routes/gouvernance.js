@@ -16,6 +16,7 @@ const { requireSession, isRecused } = require('../auth');
 const router = express.Router();
 const q = () => db.get();
 router.use(requireSession(['full']));
+const { checkSecondFactor } = require('./auth')._internal;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024, files: 2 } });
 
 const admin = (req, res, next) => (gov.isAdmin(req.user) ? next() : res.status(403).json({ error: 'Réservé au président du comité (administrateur de l’outil)' }));
@@ -91,10 +92,17 @@ router.post('/dossiers/:id/scrutins', admin, run((req, res) => {
 router.post('/scrutins/:sid/vote', run((req, res) => {
   const sc = scrutinFor(req, res); if (!sc) return;
   const b = req.body || {};
-  gov.castVote(sc, req.user, b.choice, b.motivation);
+  // Signature du vote : nouvelle saisie du code de double authentification
+  const fresh = q().prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  const method = checkSecondFactor(fresh, b.code);
+  if (!method) {
+    audit.fromReq(req, 'signature_vote_refusee', `scrutin #${sc.id}`);
+    return res.status(401).json({ error: 'Code de double authentification invalide : le vote n’est pas signé ni enregistré.' });
+  }
+  const r = gov.castVote(sc, req.user, b.choice, b.motivation, method);
   // Le journal n'enregistre jamais le sens du vote
-  audit.fromReq(req, 'vote_emis', `scrutin #${sc.id}`);
-  res.json({ scrutin: gov.scrutinView(q().prepare('SELECT * FROM scrutins WHERE id = ?').get(sc.id), req.user) });
+  audit.fromReq(req, 'vote_signe', `scrutin #${sc.id}`, `empreinte de l'émargement ${r.emargement.slice(0, 16)}`);
+  res.json({ receipt: r.receipt, at: r.at, scrutin: gov.scrutinView(q().prepare('SELECT * FROM scrutins WHERE id = ?').get(sc.id), req.user) });
 }));
 
 router.post('/scrutins/:sid/cloture', admin, run((req, res) => {
@@ -195,7 +203,7 @@ router.get('/actes/:aid/content', (req, res) => {
   const a = acteFor(req, res); if (!a) return;
   const buf = gov.readActe(a);
   audit.fromReq(req, 'acte_consulte', a.title);
-  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Type', gov.acteMime(a));
   res.set('Content-Disposition', `${req.query.download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(a.original_name)}`);
   res.set('Cache-Control', 'no-store');
   res.send(buf);
@@ -205,6 +213,7 @@ router.post('/actes/:aid/signe', admin, upload.fields([{ name: 'file', maxCount:
   const a = acteFor(req, res); if (!a) return;
   const f = req.files && req.files.file && req.files.file[0];
   if (!f) return res.status(400).json({ error: 'Joignez le PDF signé' });
+  if (a.dossier_id) gov.assertOpen(domain.getDossier(a.dossier_id));
   const signed = gov.attachSigned(a, f.buffer, req.user, (req.body || {}).note);
   const r = req.files.rapport && req.files.rapport[0];
   let report = null;
@@ -216,25 +225,48 @@ router.post('/actes/:aid/signe', admin, upload.fields([{ name: 'file', maxCount:
   res.status(201).json({ acte: gov.acteView(signed), rapport: report ? gov.acteView(report) : null });
 }));
 
+// Exemplaire imprimé, signé à la main, numérisé puis versé ; clôture du dossier
+const uploadScan = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024, files: 1 } });
+router.post('/actes/:aid/signe-manuscrit', admin, uploadScan.single('file'), run(async (req, res) => {
+  const a = acteFor(req, res); if (!a) return;
+  if (!req.file) return res.status(400).json({ error: 'Joignez l’exemplaire signé numérisé (PDF, JPEG ou PNG)' });
+  const b = req.body || {};
+  const signed = gov.attachHandwritten(a, req.file, req.user, { code: b.code, note: b.note });
+  audit.fromReq(req, 'acte_signe_manuscrit_verse', a.title);
+  let closure = null; let closureError = null;
+  if (a.type === 'avis' && b.cloturer !== 'false') {
+    try {
+      const r = await gov.closeDossier(domain.getDossier(a.dossier_id), req.user);
+      closure = { acte: gov.acteView(r.acte), checkId: r.check.checkId };
+      audit.fromReq(req, 'dossier_clos', domain.getDossier(a.dossier_id).reference, { controle: r.check.checkId });
+    } catch (e) {
+      if (!(e instanceof gov.RuleError)) throw e;
+      closureError = e.message;
+    }
+  }
+  res.status(201).json({ acte: gov.acteView(signed), closure, closureError });
+}));
+
+router.post('/dossiers/:id/cloture', admin, run(async (req, res) => {
+  const d = dossierFor(req, res); if (!d) return;
+  const r = await gov.closeDossier(d, req.user);
+  audit.fromReq(req, 'dossier_clos', d.reference, { controle: r.check.checkId });
+  res.json({ acte: gov.acteView(r.acte), checkId: r.check.checkId });
+}));
+
+// Courriel au porteur : brouillon modifiable, puis envoi sur décision du président
+router.get('/actes/:aid/courriel', admin, run((req, res) => {
+  const a = acteFor(req, res); if (!a) return;
+  if (a.type !== 'avis' || a.parent_id) return res.status(400).json({ error: 'Seul un avis est adressé au porteur' });
+  const envois = q().prepare('SELECT e.*, u.full_name FROM envois e JOIN users u ON u.id = e.sent_by WHERE e.dossier_id = ? ORDER BY e.id').all(a.dossier_id);
+  res.json({ draft: gov.mailDraft(a, req.user), envois });
+}));
+
 router.post('/actes/:aid/transmettre', admin, run(async (req, res) => {
   const a = acteFor(req, res); if (!a) return;
-  if (a.type !== 'avis') return res.status(400).json({ error: 'Seuls les avis sont transmis au porteur' });
-  const base = a.parent_id ? q().prepare('SELECT * FROM actes WHERE id = ?').get(a.parent_id) : a;
-  const signed = q().prepare('SELECT * FROM actes WHERE parent_id = ? AND signed = 1 ORDER BY id DESC').get(base.id);
-  const toSend = signed || base;
-  if (!signed && !(req.body || {}).sans_signature_qualifiee) {
-    return res.status(400).json({ error: 'Aucune version signée n’a été déposée. Confirmez l’envoi de la version non signée ou déposez d’abord la version signée.', needsConfirmation: true });
-  }
-  const d = domain.getDossier(a.dossier_id);
-  await mailer.send({
-    to: d.applicant_email, subject: `Avis du comité — ${d.reference}`,
-    text: `Bonjour ${d.applicant_name},\n\nVeuillez trouver ci-joint l'avis du ${config.committeeName} sur votre demande « ${d.title} » (${d.reference}).\n\nEmpreinte SHA-256 du fichier : ${toSend.sha256}\n${signed ? 'Le document porte une signature électronique ; vous pouvez la vérifier avec votre lecteur PDF ou l\'outil de validation de la Commission européenne.' : ''}\n`,
-    attachments: [{ filename: toSend.original_name, content: gov.readActe(toSend), contentType: 'application/pdf' }],
-  });
-  q().prepare('UPDATE actes SET sent_at = ? WHERE id = ?').run(Date.now(), toSend.id);
-  gov.event(d.id, req.user.id, 'transmission', `Avis transmis au porteur (${signed ? 'version signée' : 'version non signée'})`);
-  audit.fromReq(req, 'avis_transmis', d.reference, toSend.original_name);
-  res.json({ ok: true, signed: !!signed });
+  const r = await gov.sendAvis(a, req.user, req.body || {});
+  audit.fromReq(req, 'avis_transmis', a.title, r.to);
+  res.json({ ok: true, ...r });
 }));
 
 // ---------- Rapport annuel (art. 34.2) ----------
