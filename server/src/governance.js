@@ -127,6 +127,12 @@ function openScrutin({ dossier, by, procedure = 'ordinaire', secret = false, sea
     nSeats = 2;
   } else {
     if (rapp.length < 2) throw new RuleError('Deux rapporteurs doivent être désignés avant le vote (art. 28.1)');
+    // Vote par voie électronique (hors séance) : date limite d'au moins N jours ouvrés (art. 43.3)
+    if (!seanceId) {
+      if (!deadline) throw new RuleError('Un vote par voie électronique exige une date limite (art. 43.3)');
+      const wd = workdaysBetween(Date.now(), deadline);
+      if (wd < config.electronicVoteMinWorkdays) throw new RuleError(`La date limite d’un vote électronique doit laisser au moins ${config.electronicVoteMinWorkdays} jours ouvrés (art. 43.3) : ${wd} prévu(s)`);
+    }
     const voters = q().prepare(`SELECT id FROM users WHERE status = 'actif' AND fonction IN (${VOTING.map(() => '?').join(',')})`).all(...VOTING);
     electeurs = voters.filter((u) => !isRecused(u.id, dossier.id)).map((u) => ({ user_id: u.id, substitute_for: null }));
     for (const s of substitutes || []) {
@@ -159,6 +165,22 @@ function openScrutin({ dossier, by, procedure = 'ordinaire', secret = false, sea
  * signature du serveur. En vote secret, le bulletin ne porte ni nom ni lien
  * avec l'émargement.
  */
+/** Jours ouvrés (du lundi au vendredi) entièrement compris entre deux instants ; les jours fériés ne sont pas décomptés. */
+function workdaysBetween(from, to) {
+  let n = 0; const d = new Date(from); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 1);
+  const end = new Date(to); end.setHours(0, 0, 0, 0);
+  while (d <= end) { const w = d.getDay(); if (w !== 0 && w !== 6) n++; d.setDate(d.getDate() + 1); }
+  return n;
+}
+
+/** Art. 43.3 : tout membre peut demander que le dossier soumis à un vote électronique soit examiné en séance. */
+function requestSession(sc, by) {
+  if (sc.status !== 'ouvert') throw new RuleError('Ce vote n’est plus ouvert');
+  if (sc.seance_id || sc.procedure !== 'ordinaire') throw new RuleError('Seul un vote ordinaire par voie électronique peut être renvoyé en séance');
+  if (![...VOTING, 'suppleant'].includes(by.fonction)) throw new RuleError('Réservé aux membres du comité');
+  cancelScrutin(sc, by, `examen en séance demandé par ${by.full_name} (art. 43.3)`);
+}
+
 function castVote(sc, user, choice, motivation, method = 'totp') {
   if (sc.status !== 'ouvert') throw new RuleError('Ce scrutin est clos');
   if (sc.deadline && Date.now() > sc.deadline) throw new RuleError('La date limite de vote est passée');
@@ -628,7 +650,7 @@ async function sendAvis(acte, by, { subject, body }) {
 }
 
 module.exports = {
-  verifyVotes, attachHandwritten, closeDossier, mailDraft, sendAvis, assertOpen, signedVersionOf, acteMime,
+  verifyVotes, workdaysBetween, requestSession, attachHandwritten, closeDossier, mailDraft, sendAvis, assertOpen, signedVersionOf, acteMime,
   FONCTIONS, VOTING, CHOICES, CHOICES_EN, CHOICE_TO_STATUS, RuleError,
   isAdmin, canManageDossiers, seats, activeRapporteurs, isRapporteur, designateRapporteur, endRapporteur,
   openScrutinOf, openScrutin, castVote, tallyOf, computeResult, closeScrutin, cancelScrutin, requestPlenary, scrutinView,

@@ -38,7 +38,8 @@ function build() {
     avisDelayDays: parseInt(env('AVIS_DELAY_DAYS', '30'), 10),           // art. 31.2
     appealDelayMonths: parseInt(env('APPEAL_DELAY_MONTHS', '3'), 10),     // délai d'appel après la réception de l'avis
     receptionPresumptionDays: parseInt(env('RECEPTION_PRESUMPTION_DAYS', '15'), 10), // avis réputé reçu N jours après l'envoi, sans confirmation
-    retentionYears: parseInt(env('RETENTION_YEARS', '10'), 10),           // art. 34.3 : durée du projet + 10 ans
+    retentionYears: parseInt(env('RETENTION_YEARS', '10'), 10),
+    electronicVoteMinWorkdays: parseInt(env('ELECTRONIC_VOTE_MIN_WORKDAYS', '5'), 10), // art. 43.3 : délai minimal d'un vote électronique           // art. 34.3 : durée du projet + 10 ans
     retentionNoticeDays: parseInt(env('RETENTION_NOTICE_DAYS', '90'), 10),  // signalement des échéances proches
     // Fonctions autorisées à détenir le rôle administrateur de l'outil
     adminFunctions: (env('ADMIN_FUNCTIONS', 'president,vice_president')).split(',').map((s) => s.trim()).filter(Boolean),

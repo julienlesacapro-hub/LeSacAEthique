@@ -56,7 +56,7 @@ async function closedDossier(title, { seance = false } = {}) {
   await api('POST', `/api/gov/dossiers/${d.id}/rapporteurs`, 'pres', { user_id: U.t2.id });
   let seanceId = null;
   if (seance) seanceId = (await api('POST', '/api/gov/seances', 'pres', { date: Date.now(), mode: 'visio' })).body.seance.id;
-  const sc = (await api('POST', `/api/gov/dossiers/${d.id}/scrutins`, 'pres', { seance_id: seanceId })).body.scrutin;
+  const sc = (await api('POST', `/api/gov/dossiers/${d.id}/scrutins`, 'pres', { seance_id: seanceId, deadline: seanceId ? null : Date.now() + 14 * 864e5 })).body.scrutin;
   for (const k of ['pres', 't1', 't2']) await api('POST', `/api/gov/scrutins/${sc.id}/vote`, k, { choice: 'favorable', code: code(k) });
   await api('POST', `/api/gov/scrutins/${sc.id}/cloture`, 'pres');
   if (seanceId) assert.equal((await api('POST', `/api/gov/seances/${seanceId}/cloture`, 'pres')).status, 200);

@@ -71,7 +71,7 @@ before(async () => {
   await api('POST', `/api/dossiers/${d.id}/conflicts`, 't3', { reason: 'Co-auteur' });
   await api('POST', `/api/gov/dossiers/${d.id}/rapporteurs`, 'pres', { user_id: U.t1.id });
   await api('POST', `/api/gov/dossiers/${d.id}/rapporteurs`, 'pres', { user_id: U.t2.id });
-  const sc = (await api('POST', `/api/gov/dossiers/${d.id}/scrutins`, 'pres', {})).body.scrutin;
+  const sc = (await api('POST', `/api/gov/dossiers/${d.id}/scrutins`, 'pres', { deadline: Date.now() + 14 * 864e5 })).body.scrutin;
   for (const k of ['pres', 't1', 't2']) await api('POST', `/api/gov/scrutins/${sc.id}/vote`, k, { choice: 'defavorable', motivation: 'Insuffisant', code: code(k) });
   await api('POST', `/api/gov/scrutins/${sc.id}/cloture`, 'pres');
   const avis = (await api('POST', `/api/gov/dossiers/${d.id}/avis`, 'pres', { scrutin_id: sc.id, motivation: 'Information des participants insuffisante.' })).body.acte;

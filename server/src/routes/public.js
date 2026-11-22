@@ -6,7 +6,7 @@
  * et de la taille des fichiers.
  *
  * Le site ne reçoit ni ne stocke rien : le formulaire envoie directement au
- * serveur du comité (le site reste séparé, cf. règlement intérieur, art. 59).
+ * serveur du comité (le site reste séparé, cf. règlement intérieur, art. 71).
  */
 const express = require('express');
 const multer = require('multer');

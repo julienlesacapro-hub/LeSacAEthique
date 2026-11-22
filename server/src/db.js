@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS dossiers (
   appeal_reason         TEXT,
   related_reference     TEXT,              -- appel hors délai enregistré comme nouvelle demande
   project_end_at        INTEGER,           -- fin du projet : point de départ de la durée de conservation (art. 34.3)
-  destroyed_at          INTEGER,           -- destruction en fin de conservation (art. 34-11.2)
+  destroyed_at          INTEGER,           -- destruction en fin de conservation (art. 45.2)
   UNIQUE (year, seq)
 );
 
@@ -334,7 +334,7 @@ CREATE TABLE IF NOT EXISTS receptions (
   ip           TEXT NOT NULL DEFAULT ''
 );
 
--- Destructions en fin de conservation (art. 34-11.2)
+-- Destructions en fin de conservation (art. 45.2)
 CREATE TABLE IF NOT EXISTS destructions (
   id              INTEGER PRIMARY KEY,
   dossier_id      INTEGER NOT NULL REFERENCES dossiers(id),   -- dossier initial
@@ -392,7 +392,7 @@ BEGIN SELECT RAISE(ABORT, 'Un document déposé ne peut pas être supprimé'); E
 CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit_log
 BEGIN SELECT RAISE(ABORT, 'Le journal est en ajout seul'); END;
 -- Journal : suppression possible UNIQUEMENT au-delà de 365 jours
--- (règlement intérieur, art. 40 : conservation entre six mois et un an).
+-- (règlement intérieur, art. 52 : conservation entre six mois et un an).
 CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit_log
 WHEN old.at > (CAST(strftime('%s','now') AS INTEGER) - 365*86400) * 1000
 BEGIN SELECT RAISE(ABORT, 'Le journal est en ajout seul'); END;

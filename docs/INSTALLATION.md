@@ -2,7 +2,7 @@
 
 ## 1. Prérequis
 
-- Un serveur Linux (Debian 12 ou Ubuntu 24.04 par exemple), hébergé en France ou dans l'Union européenne. Il doit rester **distinct du serveur du registre** (règlement intérieur, art. 59.4).
+- Un serveur Linux (Debian 12 ou Ubuntu 24.04 par exemple), hébergé en France ou dans l'Union européenne. Il doit rester **distinct du serveur du registre** (règlement intérieur, art. 71.4).
 - Un nom de domaine dédié, par exemple `cer.promednav.fr`, qui pointe vers ce serveur.
 - Un compte SMTP pour l'envoi des courriels (invitations, notifications, réinitialisations).
 - Docker et Docker Compose (méthode A) ou Node.js 22 (méthode B).

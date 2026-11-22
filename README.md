@@ -50,7 +50,7 @@ Membres : navigateur / PWA / Electron / Capacitor ──(HTTPS)──►
 | `desktop/` | application de bureau Electron |
 | `mobile/` | applications Android et iOS (Capacitor) |
 | `deploy/` | Docker, proxy HTTPS (Caddy), service systemd, sauvegarde chiffrée |
-| `docs/` | [installation](docs/INSTALLATION.md), [guide des membres](docs/GUIDE_MEMBRES.md), [sécurité, conformité et limites](docs/CONFORMITE_ET_LIMITES.md), [propositions pour le règlement intérieur](docs/PROPOSITION_REGLEMENT_INTERIEUR.md) (+ .docx), [signature électronique qualifiée](docs/SIGNATURE_QUALIFIEE.md) (+ .docx) |
+| `docs/` | [installation](docs/INSTALLATION.md), [guide des membres](docs/GUIDE_MEMBRES.md), [sécurité, conformité et limites](docs/CONFORMITE_ET_LIMITES.md), [statuts et règlement intérieur (Word)](docs/textes-reglementaires/), [signature électronique qualifiée](docs/SIGNATURE_QUALIFIEE.md) (+ .docx) |
 | `design/`, `tools/` | logo selon la charte LeSacA (sac de LeSacAPDF) et son générateur (`node tools/make-icons.js`) |
 
 ## Démarrage rapide (essai local)

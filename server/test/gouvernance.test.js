@@ -357,3 +357,24 @@ test('rapport annuel sans élément confidentiel', async () => {
   assert.equal(r.status, 201);
   assert.equal(domain.verifyIntegrity().ok, true);
 });
+
+test('vote électronique : date limite d’au moins 5 jours ouvrés ; tout membre peut demander l’examen en séance', async () => {
+  const d4 = domain.createDossier({ title: 'Étude D', applicant_name: 'X', applicant_email: 'x@x.test', qualification: 'RNIPH' });
+  await api('POST', `/api/gov/dossiers/${d4.id}/rapporteurs`, 'pres', { user_id: U.t1.id });
+  await api('POST', `/api/gov/dossiers/${d4.id}/rapporteurs`, 'pres', { user_id: U.t3.id });
+  let r = await api('POST', `/api/gov/dossiers/${d4.id}/scrutins`, 'pres', {});
+  assert.equal(r.status, 400); assert.match(r.body.error, /date limite/);
+  r = await api('POST', `/api/gov/dossiers/${d4.id}/scrutins`, 'pres', { deadline: Date.now() + 2 * 864e5 });
+  assert.equal(r.status, 400); assert.match(r.body.error, /jours ouvrés/);
+  r = await api('POST', `/api/gov/dossiers/${d4.id}/scrutins`, 'pres', { deadline: Date.now() + 10 * 864e5 });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const sid = r.body.scrutin.id;
+  r = await api('POST', `/api/gov/scrutins/${sid}/demande-seance`, 'secr');
+  assert.equal(r.status, 400); // le secrétariat n'est pas membre votant
+  r = await api('POST', `/api/gov/scrutins/${sid}/demande-seance`, 't2');
+  assert.equal(r.status, 200);
+  assert.equal(db.get().prepare('SELECT status FROM scrutins WHERE id = ?').get(sid).status, 'annule');
+  const gov = require('../src/governance');
+  const mon = new Date(2026, 10, 23).getTime(); // lundi
+  assert.equal(gov.workdaysBetween(mon, new Date(2026, 10, 30).getTime()), 5); // mar.→lun.
+});
