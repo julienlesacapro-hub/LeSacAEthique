@@ -12,6 +12,27 @@ Avec Docker, sur un serveur de présentation : `docker compose -f deploy/docker-
 
 La démo repart de zéro à chaque lancement. Pour garder les manipulations entre deux lancements, utilisez `DEMO_KEEP=true npm run demo`.
 
+## Sur un smartphone Android (ou un iPhone)
+
+La démo tourne sur un ordinateur. Le téléphone l'ouvre par le même réseau Wi-Fi.
+
+1. Sur l'ordinateur (Windows, macOS ou Linux), installez **Node.js 22 LTS** depuis nodejs.org (choix par défaut).
+2. Récupérez le code : sur GitHub, ouvrez le dépôt → **Code** → **Download ZIP**, puis décompressez.
+3. Ouvrez un terminal dans le dossier `server` :
+   - **Windows** : clic droit dans le dossier → « Ouvrir dans le Terminal » ;
+   - **Mac** : Terminal, puis `cd` suivi du chemin du dossier.
+4. Tapez `npm ci` (une seule fois), puis `npm run demo`.
+5. Le terminal affiche une adresse du type `http://192.168.1.23:8443` et un **QR code**. Sous Windows, si le pare-feu le demande, autorisez Node.js sur les **réseaux privés**.
+6. Sur le téléphone, connecté au **même Wi-Fi** : scannez le QR code avec l'appareil photo, ou tapez l'adresse dans Chrome.
+7. Choisissez un rôle. Pour signer, le code est 000000.
+
+Facultatif : menu ⋮ de Chrome → « Ajouter à l'écran d'accueil » crée un raccourci. L'installation complète en application (notifications, hors connexion) exige une adresse en `https`, donc un hébergement (Docker ci-dessous).
+
+**En cas de problème :**
+- **La page ne s'ouvre pas** : vérifiez que le téléphone est sur le même Wi-Fi (pas en 4G/5G) et que le terminal est toujours ouvert. Les réseaux Wi-Fi « invités » ou publics isolent souvent les appareils entre eux : utilisez le Wi-Fi de la maison ou le partage de connexion du téléphone.
+- **Plusieurs adresses affichées** : essayez-les une à une ; c'est souvent celle qui commence par `192.168.`.
+- **Arrêter la démo** : Ctrl + C dans le terminal.
+
 ## Ce qui change par rapport à la version réelle
 
 | Version réelle | Démonstration |
