@@ -1,0 +1,226 @@
+'use strict';
+/**
+ * Base de données SQLite (fichier unique sur le serveur de l'association).
+ *
+ * Règles d'intégrité imposées AU NIVEAU DE LA BASE par des déclencheurs
+ * (triggers), et non seulement par l'interface :
+ *  - un commentaire ne peut jamais être modifié ni supprimé ;
+ *  - un document déposé ne peut jamais être modifié ni supprimé
+ *    (une nouvelle version s'ajoute à côté) ;
+ *  - le journal d'audit, l'historique des dossiers et les déclarations de
+ *    conflit d'intérêts sont en ajout seul.
+ * En complément, chaque commentaire est chaîné (empreinte SHA-256 du
+ * précédent) et signé par le serveur (Ed25519) : toute altération faite
+ * directement dans le fichier est détectable (scripts/verify-integrity.js).
+ */
+const fs = require('fs');
+const path = require('path');
+const Database = require('better-sqlite3');
+const config = require('./config');
+
+const SCHEMA = `
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS users (
+  id              INTEGER PRIMARY KEY,
+  email           TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  full_name       TEXT NOT NULL,
+  quality         TEXT NOT NULL DEFAULT '',
+  role            TEXT NOT NULL CHECK (role IN ('lecture','ecriture','admin')),
+  status          TEXT NOT NULL DEFAULT 'invite' CHECK (status IN ('invite','actif','suspendu')),
+  password_hash   TEXT,
+  totp_secret     TEXT,
+  totp_enabled    INTEGER NOT NULL DEFAULT 0,
+  totp_last_step  INTEGER NOT NULL DEFAULT 0,
+  recovery_codes  TEXT NOT NULL DEFAULT '[]',
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until    INTEGER NOT NULL DEFAULT 0,
+  notify_email    INTEGER NOT NULL DEFAULT 1,
+  notify_comments INTEGER NOT NULL DEFAULT 1,
+  created_at      INTEGER NOT NULL,
+  created_by      INTEGER,
+  last_login_at   INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS tokens (
+  id          INTEGER PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id),
+  type        TEXT NOT NULL CHECK (type IN ('invite','reset')),
+  token_hash  TEXT NOT NULL UNIQUE,
+  expires_at  INTEGER NOT NULL,
+  used_at     INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id           INTEGER PRIMARY KEY,
+  token_hash   TEXT NOT NULL UNIQUE,
+  user_id      INTEGER NOT NULL REFERENCES users(id),
+  stage        TEXT NOT NULL CHECK (stage IN ('mfa','enroll','full')),
+  created_at   INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  expires_at   INTEGER NOT NULL,
+  ip           TEXT,
+  user_agent   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS dossiers (
+  id                    INTEGER PRIMARY KEY,
+  reference             TEXT NOT NULL UNIQUE,
+  year                  INTEGER NOT NULL,
+  seq                   INTEGER NOT NULL,
+  title                 TEXT NOT NULL,
+  applicant_name        TEXT NOT NULL,
+  applicant_email       TEXT NOT NULL,
+  applicant_affiliation TEXT NOT NULL DEFAULT '',
+  investigator          TEXT NOT NULL DEFAULT '',
+  qualification         TEXT NOT NULL DEFAULT 'RNIPH',
+  qualification_reason  TEXT NOT NULL DEFAULT '',
+  summary               TEXT NOT NULL DEFAULT '',
+  funding               TEXT NOT NULL DEFAULT '',
+  procedure             TEXT NOT NULL DEFAULT 'ordinaire' CHECK (procedure IN ('ordinaire','simplifiee')),
+  status                TEXT NOT NULL DEFAULT 'depose',
+  source                TEXT NOT NULL DEFAULT 'site',
+  created_at            INTEGER NOT NULL,
+  updated_at            INTEGER NOT NULL,
+  UNIQUE (year, seq)
+);
+
+CREATE TABLE IF NOT EXISTS dossier_events (
+  id          INTEGER PRIMARY KEY,
+  dossier_id  INTEGER NOT NULL REFERENCES dossiers(id),
+  at          INTEGER NOT NULL,
+  user_id     INTEGER REFERENCES users(id),
+  type        TEXT NOT NULL,
+  details     TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS documents (
+  id            INTEGER PRIMARY KEY,
+  dossier_id    INTEGER NOT NULL REFERENCES dossiers(id),
+  piece         TEXT NOT NULL,
+  label         TEXT NOT NULL DEFAULT '',
+  version       INTEGER NOT NULL DEFAULT 1,
+  original_name TEXT NOT NULL,
+  mime          TEXT NOT NULL,
+  size          INTEGER NOT NULL,
+  sha256        TEXT NOT NULL,
+  storage_name  TEXT NOT NULL UNIQUE,
+  uploaded_by   INTEGER REFERENCES users(id),
+  uploaded_at   INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS comments (
+  id             INTEGER PRIMARY KEY,
+  dossier_id     INTEGER NOT NULL REFERENCES dossiers(id),
+  parent_id      INTEGER REFERENCES comments(id),
+  document_id    INTEGER REFERENCES documents(id),
+  kind           TEXT NOT NULL DEFAULT 'commentaire' CHECK (kind IN ('commentaire','reponse','complement')),
+  author_id      INTEGER NOT NULL REFERENCES users(id),
+  author_name    TEXT NOT NULL,
+  author_quality TEXT NOT NULL,
+  author_email   TEXT NOT NULL,
+  body           TEXT NOT NULL,
+  created_at     INTEGER NOT NULL,
+  prev_hash      TEXT NOT NULL,
+  hash           TEXT NOT NULL UNIQUE,
+  signature      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS conflicts (
+  id          INTEGER PRIMARY KEY,
+  dossier_id  INTEGER NOT NULL REFERENCES dossiers(id),
+  user_id     INTEGER NOT NULL REFERENCES users(id),
+  reason      TEXT NOT NULL,
+  declared_at INTEGER NOT NULL,
+  UNIQUE (dossier_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS reads (
+  user_id    INTEGER NOT NULL REFERENCES users(id),
+  dossier_id INTEGER NOT NULL REFERENCES dossiers(id),
+  last_read_comment_id INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, dossier_id)
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id          INTEGER PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id),
+  type        TEXT NOT NULL,
+  dossier_id  INTEGER REFERENCES dossiers(id),
+  comment_id  INTEGER REFERENCES comments(id),
+  message     TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  read_at     INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id         INTEGER PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id),
+  endpoint   TEXT NOT NULL UNIQUE,
+  keys_json  TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id       INTEGER PRIMARY KEY,
+  at       INTEGER NOT NULL,
+  user_id  INTEGER,
+  action   TEXT NOT NULL,
+  target   TEXT NOT NULL DEFAULT '',
+  ip       TEXT NOT NULL DEFAULT '',
+  details  TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_comments_dossier ON comments(dossier_id, id);
+CREATE INDEX IF NOT EXISTS idx_documents_dossier ON documents(dossier_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at);
+CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
+
+-- ===== Immuabilité =====
+CREATE TRIGGER IF NOT EXISTS comments_no_update BEFORE UPDATE ON comments
+BEGIN SELECT RAISE(ABORT, 'Un commentaire ne peut pas être modifié'); END;
+CREATE TRIGGER IF NOT EXISTS comments_no_delete BEFORE DELETE ON comments
+BEGIN SELECT RAISE(ABORT, 'Un commentaire ne peut pas être supprimé'); END;
+
+CREATE TRIGGER IF NOT EXISTS documents_no_update BEFORE UPDATE ON documents
+BEGIN SELECT RAISE(ABORT, 'Un document déposé ne peut pas être modifié'); END;
+CREATE TRIGGER IF NOT EXISTS documents_no_delete BEFORE DELETE ON documents
+BEGIN SELECT RAISE(ABORT, 'Un document déposé ne peut pas être supprimé'); END;
+
+CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit_log
+BEGIN SELECT RAISE(ABORT, 'Le journal est en ajout seul'); END;
+-- Journal : suppression possible UNIQUEMENT au-delà de 365 jours
+-- (règlement intérieur, art. 40 : conservation entre six mois et un an).
+CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit_log
+WHEN old.at > (CAST(strftime('%s','now') AS INTEGER) - 365*86400) * 1000
+BEGIN SELECT RAISE(ABORT, 'Le journal est en ajout seul'); END;
+
+CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON dossier_events
+BEGIN SELECT RAISE(ABORT, 'Historique en ajout seul'); END;
+CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON dossier_events
+BEGIN SELECT RAISE(ABORT, 'Historique en ajout seul'); END;
+
+CREATE TRIGGER IF NOT EXISTS conflicts_no_update BEFORE UPDATE ON conflicts
+BEGIN SELECT RAISE(ABORT, 'Une déclaration de conflit ne peut pas être modifiée'); END;
+CREATE TRIGGER IF NOT EXISTS conflicts_no_delete BEFORE DELETE ON conflicts
+BEGIN SELECT RAISE(ABORT, 'Une déclaration de conflit ne peut pas être supprimée'); END;
+`;
+
+let db = null;
+
+function open() {
+  if (db) return db;
+  fs.mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(config.filesDir, { recursive: true, mode: 0o700 });
+  db = new Database(config.dbFile);
+  db.exec(SCHEMA);
+  return db;
+}
+
+function close() {
+  if (db) db.close();
+  db = null;
+}
+
+module.exports = { open, close, get: () => open(), SCHEMA, dbPath: () => path.resolve(config.dbFile) };

@@ -1,0 +1,28 @@
+:root { --cer-navy: #0b3d5c; --cer-teal: #127f78; --cer-gold: #f2b134; --cer-bg: #f5f8fa; --cer-text: #13222e; --cer-muted: #5b6b78; --cer-border: #d6e0e7; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--cer-bg); color: var(--cer-text); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+.cer-form-wrap { max-width: 820px; margin: 0 auto; padding: 24px 16px 60px; }
+.cer-head { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+.cer-head h1 { margin: 0; font-size: 1.5rem; color: var(--cer-navy); }
+.cer-head p { margin: 0; color: var(--cer-muted); }
+.cer-note { background: #fff6e0; color: #5a3e00; border-radius: 12px; padding: 14px 16px; font-size: .93rem; margin-bottom: 18px; }
+.cer-note p { margin: 0 0 .5em; } .cer-note p:last-child { margin: 0; }
+fieldset { background: #fff; border: 1px solid var(--cer-border); border-radius: 12px; padding: 16px; margin: 0 0 16px; }
+legend { font-weight: 700; color: var(--cer-navy); padding: 0 6px; }
+label { display: block; font-weight: 600; font-size: .92rem; margin: 12px 0 4px; }
+input, textarea { font: inherit; width: 100%; padding: 10px 12px; border: 1px solid var(--cer-border); border-radius: 10px; min-height: 44px; background: #fff; color: inherit; }
+input[type=file] { padding: 8px; }
+.cer-radio, .cer-check { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; }
+.cer-radio input, .cer-check input { width: auto; min-height: 0; margin-top: 5px; }
+.cer-piece { border-top: 1px solid var(--cer-border); padding-top: 4px; }
+.cer-piece:first-child { border-top: 0; }
+.cer-hint { color: var(--cer-muted); font-size: .85rem; }
+.cer-warn { background: #fdecea; color: #8c1d18; padding: 10px 12px; border-radius: 10px; font-size: .9rem; }
+.cer-error { background: #fdecea; color: #8c1d18; padding: 12px 14px; border-radius: 10px; margin-bottom: 14px; font-weight: 600; }
+.cer-hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.cer-rgpd { margin-top: 12px; font-size: .88rem; color: var(--cer-muted); }
+.cer-rgpd summary { cursor: pointer; font-weight: 600; color: var(--cer-teal); }
+.cer-submit { font: inherit; font-weight: 700; background: var(--cer-navy); color: #fff; border: 0; border-radius: 10px; padding: 12px 22px; min-height: 48px; cursor: pointer; width: 100%; }
+.cer-submit:disabled { opacity: .6; }
+.cer-done { background: #e5f6f3; color: #0c5b55; border-radius: 12px; padding: 20px; }
+:focus-visible { outline: 3px solid var(--cer-gold); outline-offset: 2px; }

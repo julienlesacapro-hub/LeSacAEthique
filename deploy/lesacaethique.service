@@ -1,0 +1,19 @@
+# Installation sans Docker (Debian/Ubuntu) : /etc/systemd/system/lesacaethique.service
+[Unit]
+Description=LeSacAEthique (CER-PROMEDNAV)
+After=network.target
+
+[Service]
+User=lesaca
+WorkingDirectory=/opt/lesacaethique/server
+EnvironmentFile=/opt/lesacaethique/server/.env
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/lesacaethique /etc/lesacaethique/keys
+
+[Install]
+WantedBy=multi-user.target

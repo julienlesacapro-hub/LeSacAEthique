@@ -1,0 +1,8 @@
+{
+  "appId": "fr.promednav.lesacaethique",
+  "appName": "LeSacAEthique",
+  "webDir": "www",
+  "android": { "allowMixedContent": false },
+  "ios": { "contentInset": "automatic" },
+  "server": { "androidScheme": "https" }
+}

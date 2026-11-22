@@ -1,0 +1,28 @@
+{
+  "name": "lesacaethique-server",
+  "version": "1.0.0",
+  "description": "LeSacAEthique — serveur du comité d'éthique de la recherche CER-PROMEDNAV",
+  "private": true,
+  "main": "src/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "create-admin": "node scripts/create-admin.js",
+    "verify": "node scripts/verify-integrity.js",
+    "test": "node --test test/*.test.js"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "better-sqlite3": "^13.2.0",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.5",
+    "helmet": "^8.3.0",
+    "multer": "^2.5.0",
+    "nodemailer": "^10.6.1",
+    "qrcode": "^1.5.4",
+    "web-push": "^4.0.0"
+  }
+}

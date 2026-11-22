@@ -1,0 +1,23 @@
+{
+  "name": "lesacaethique-desktop",
+  "version": "1.0.0",
+  "description": "LeSacAEthique — application de bureau (Windows, macOS, Linux) du CER-PROMEDNAV",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "fr.promednav.lesacaethique",
+    "productName": "LeSacAEthique",
+    "files": ["main.js", "preload.js", "setup.html", "icon.png"],
+    "win": { "target": "nsis", "icon": "icon.png" },
+    "mac": { "target": "dmg", "icon": "icon.png", "category": "public.app-category.productivity" },
+    "linux": { "target": "AppImage", "icon": "icon.png" }
+  }
+}
