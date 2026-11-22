@@ -133,6 +133,7 @@ async function render() {
     if (path === '/seances') return viewSeances();
     if (ms) return viewSeance(+ms[1]);
     if (path === '/rapport') return viewRapport();
+    if (path === '/demo/courriels' && S.meta.demo) return viewDemoMails();
     if (path === '/profil') return viewProfile();
     if (path === '/admin/membres' && S.user.role === 'admin') return viewMembers();
     if (path === '/admin/journal' && S.user.role === 'admin') return viewAudit();
@@ -182,6 +183,12 @@ function shell(path, ...content) {
     h('nav', { class: 'tabbar', 'aria-label': 'Navigation' },
       links.map(([p, label, icon]) => h('a', { href: '#' + p, 'aria-current': cur(p) }, svg(ICONS[icon]), label.replace('Administration', 'Admin'), badge(p)))),
   );
+  if (S.meta.demo) {
+    const main = document.getElementById('main');
+    main.prepend(h('div', { class: 'demo-banner' }, h('b', {}, 'DÉMONSTRATION'), ` — données fictives · code de double authentification : ${S.meta.demo.code} · `,
+      h('a', { href: '#/demo/courriels' }, 'courriels envoyés'), ' · ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); logout(); } }, 'changer de rôle'), ' · ', h('a', { href: '/formulaire/', target: '_blank', rel: 'noopener' }, 'formulaire du site')));
+    main.querySelectorAll('input.otp').forEach((i) => { i.placeholder = `${S.meta.demo.code} (démo)`; });
+  }
   window.scrollTo(0, 0);
 }
 
@@ -256,7 +263,20 @@ function viewLogin() {
     setToken(r.token);
     go(r.stage === 'mfa' ? '/2fa' : '/configurer-2fa');
   }));
-  authPage('LeSacAEthique', `${S.meta.committee} — espace sécurisé des membres`, form);
+  authPage('LeSacAEthique', `${S.meta.committee} — espace sécurisé des membres`, S.meta.demo ? demoLogin() : null, form);
+}
+
+function demoLogin() {
+  const box = h('div', { class: 'stack demo-login' },
+    h('p', { class: 'alert warn small' }, h('b', {}, 'Version de démonstration. '), 'Données entièrement fictives. Choisissez un rôle pour vous connecter sans mot de passe. Pour signer un vote ou une décision, le code de double authentification est ', h('b', {}, S.meta.demo.code), '.'));
+  api('GET', '/demo/accounts').then(({ accounts }) => {
+    const FN = { president: 'Président(e)', vice_president: 'Vice-président', titulaire: 'Membre titulaire', suppleant: 'Suppléante', secretariat: 'Secrétariat', consultatif: 'DPD' };
+    box.append(h('div', { class: 'demo-accounts' }, accounts.map((a) => h('button', { type: 'button', class: 'secondary', onclick: async () => {
+      const r = await api('POST', '/demo/login', { user_id: a.id });
+      setToken(r.token); S.user = r.user; refreshUnread(); startPolling(); go('/dossiers');
+    } }, h('span', { class: 'demo-acc' }, h('b', {}, a.full_name), h('small', {}, `${FN[a.fonction] || a.fonction}${a.role === 'admin' ? ' · administrateur' : a.role === 'lecture' ? ' · lecture seule' : ''}`))))));
+  }).catch(() => {});
+  return box;
 }
 
 function viewMfa() {
@@ -1258,6 +1278,18 @@ async function viewConservation() {
       h('span', {}, h('b', {}, e.family.join(' + ')), e.missing.length ? ' — fin du projet à renseigner' : ` — conservation ${e.due ? 'expirée' : 'jusqu’au'} ${e.until ? fmtDate(e.until, false) : ''}`),
       h('span', { class: `pill ${e.due ? 'new' : ''}` }, e.procedure ? PROC[e.procedure.status] : (e.due ? 'à détruire' : e.missing.length ? 'date manquante' : 'bientôt')))))) : h('p', { class: 'muted' }, 'Aucune échéance.')) : null,
     h('h2', {}, 'Historique'), h('div', { class: 'stack' }, procedures.filter((p) => !open.includes(p)).map(procCard)));
+}
+
+// ===================== Démonstration : courriels envoyés =====================
+async function viewDemoMails() {
+  const { courriels } = await api('GET', '/demo/courriels');
+  const linkify = (text) => text.split(/(https?:\/\/\S+)/).map((part) => (/^https?:\/\//.test(part) ? h('a', { href: part.replace(/^https?:\/\/[^/]+/, ''), target: '_blank', rel: 'noopener' }, part) : part));
+  shell('/demo/courriels', h('h1', {}, 'Courriels envoyés (démonstration)'),
+    h('p', { class: 'muted small' }, 'En démonstration, aucun courriel ne quitte le serveur : ils sont affichés ici. Les liens (accusé de réception, invitation…) sont cliquables.'),
+    courriels.length ? h('div', { class: 'stack' }, courriels.map((m) => h('details', { class: 'card' },
+      h('summary', {}, h('b', {}, m.subject), h('span', { class: 'small muted' }, ` — à ${m.to}`)),
+      h('pre', { class: 'mail-body' }, linkify(m.text)),
+      m.attachments.length ? h('p', { class: 'small' }, `Pièce jointe : ${m.attachments.join(', ')}`) : null))) : h('p', { class: 'empty' }, 'Aucun courriel.'));
 }
 
 render();

@@ -10,3 +10,4 @@ desktop/dist/
 *.sqlite-*
 *.key
 *.pem
+server/demo-data/

@@ -30,7 +30,7 @@ async function send({ to, subject, text, attachments, rawSubject = false, throwO
   const t = getTransport();
   if (!t) {
     outbox.push(msg);
-    if (!config.isTest) console.log(`\n--- Courriel (SMTP non configuré) ---\nÀ : ${to}\nObjet : ${msg.subject}\n${text}\n---`);
+    if (!config.isTest && !config.demoMode) console.log(`\n--- Courriel (SMTP non configuré) ---\nÀ : ${to}\nObjet : ${msg.subject}\n${text}\n---`);
     return;
   }
   try {

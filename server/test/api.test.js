@@ -337,3 +337,11 @@ test('journal d’audit et contrôle d’intégrité accessibles aux administrat
   assert.equal(r.status, 200);
   assert.match(r.body.publicKey, /BEGIN PUBLIC KEY/);
 });
+
+test('hors démonstration : pas de connexion de démo, le code 000000 est refusé', async () => {
+  let r = await api('GET', '/api/demo/accounts');
+  assert.equal(r.status, 404);
+  r = await api('POST', '/api/auth/login', { body: { email: 'admin@test.fr', password: PW } });
+  r = await api('POST', '/api/auth/mfa', { token: r.body.token, body: { code: '000000' } });
+  assert.equal(r.status, 401);
+});

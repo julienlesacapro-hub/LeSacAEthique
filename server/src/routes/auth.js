@@ -46,6 +46,8 @@ const normCode = (c) => String(c || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
 
 /** Vérifie un code TOTP ou un code de secours (consommé). */
 function checkSecondFactor(user, code) {
+  // Version de démonstration uniquement : code fixe
+  if (config.demoMode && String(code || '').trim() === require('../demo').DEMO_CODE) return 'demo';
   if (user.totp_enabled && user.totp_secret) {
     const step = totp.verify(sec.decryptText(user.totp_secret), String(code || '').trim(), user.totp_last_step);
     if (step > 0) {

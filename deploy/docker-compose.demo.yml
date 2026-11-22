@@ -1,0 +1,17 @@
+# VERSION DE DÉMONSTRATION (données fictives, réinitialisées à chaque redémarrage).
+# Lancer depuis la racine du dépôt :
+#   docker compose -f deploy/docker-compose.demo.yml up -d --build
+# Puis ouvrir http://<serveur>:8080. Ne jamais pointer ce service vers des données réelles.
+services:
+  demo:
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    restart: unless-stopped
+    command: ["node", "server/scripts/demo.js"]
+    environment:
+      DEMO_DATA_DIR: /tmp/lesaca-demo
+      HOST: 0.0.0.0
+      PORT: "8443"
+      PUBLIC_URL: "${DEMO_PUBLIC_URL:-http://localhost:8080}"
+      TRUST_PROXY: "1"
+    tmpfs: ["/tmp/lesaca-demo"]
+    ports: ["8080:8443"]

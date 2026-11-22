@@ -12,7 +12,8 @@
     "start": "node src/index.js",
     "create-admin": "node scripts/create-admin.js",
     "verify": "node scripts/verify-integrity.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "demo": "node scripts/demo.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

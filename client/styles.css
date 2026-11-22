@@ -219,3 +219,9 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .comment.initial { background: var(--surface-2); }
 .doc-list .piece.copy { color: #5b3fc4; font-weight: 600; }
 .footer-preview { white-space: pre-wrap; background: var(--surface-2); padding: 8px 10px; border-radius: 8px; margin: 0; }
+.demo-banner { background: #fff4e5; color: #6b3d00; border: 1px solid #f3c98b; border-radius: 10px; padding: 8px 12px; font-size: .85rem; margin-bottom: 14px; }
+.demo-banner a { color: #8a4b00; }
+.demo-accounts { display: grid; gap: 8px; margin-bottom: 18px; }
+.demo-accounts button { justify-content: flex-start; text-align: left; min-height: 52px; }
+.demo-acc { display: flex; flex-direction: column; } .demo-acc small { color: var(--muted); font-weight: 400; }
+.mail-body { white-space: pre-wrap; font: .85rem/1.5 var(--font); background: var(--surface-2); padding: 10px; border-radius: 8px; overflow-wrap: anywhere; }

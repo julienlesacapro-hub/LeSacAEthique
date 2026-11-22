@@ -63,6 +63,7 @@ function createApp() {
     appName: config.appName, committee: config.committeeName, committeeLongName: config.committeeLongName,
     pieces: domain.PIECES, statuses: domain.STATUSES, pushPublicKey: notify.pushEnabled() ? config.vapid.publicKey : null,
     session: config.session,
+    demo: config.demoMode ? { code: require('./demo').DEMO_CODE } : null,
   }));
   app.get('/api/health', (req, res) => res.json({ ok: true }));
 
@@ -72,6 +73,7 @@ function createApp() {
   app.use('/api/notifications', require('./routes/notifications'));
   app.use('/api/public', require('./routes/public'));
   app.use('/api/gov', require('./routes/gouvernance'));
+  if (config.demoMode) app.use('/api/demo', require('./demo').router());
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Ressource inconnue' }));
 

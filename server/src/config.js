@@ -85,6 +85,7 @@ function build() {
       subject: env('VAPID_SUBJECT', 'mailto:admin@localhost'),
     },
     isTest: env('NODE_ENV', '') === 'test',
+    demoMode: env('DEMO_MODE', 'false') === 'true',   // VERSION DE DÉMONSTRATION : jamais en production
   };
 }
 

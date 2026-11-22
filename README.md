@@ -53,6 +53,10 @@ Membres : navigateur / PWA / Electron / Capacitor ──(HTTPS)──►
 | `docs/` | [installation](docs/INSTALLATION.md), [guide des membres](docs/GUIDE_MEMBRES.md), [sécurité, conformité et limites](docs/CONFORMITE_ET_LIMITES.md), [statuts et règlement intérieur (Word)](docs/textes-reglementaires/), [signature électronique qualifiée](docs/SIGNATURE_QUALIFIEE.md) (+ .docx) |
 | `design/`, `tools/` | logo selon la charte LeSacA (sac de LeSacAPDF) et son générateur (`node tools/make-icons.js`) |
 
+## Démonstration
+
+`cd server && npm ci && npm run demo` lance une instance pré-remplie de données fictives, avec connexion en un clic par rôle : voir [docs/DEMO.md](docs/DEMO.md).
+
 ## Démarrage rapide (essai local)
 
 ```bash
