@@ -414,7 +414,9 @@ function dossierCard(d) {
   }
   return h('a', { class: 'dossier-item', href: `#/dossiers/${d.id}` }, h('div', { class: 'card' },
     h('div', { class: 'row between' }, h('span', { class: 'ref' }, d.reference),
-      h('span', { class: 'row' }, d.never_opened ? h('span', { class: 'pill new' }, 'Nouveau') : null,
+      h('span', { class: 'row' }, d.kind === 'appel' ? h('span', { class: 'pill appel' }, `Appel de ${d.parent_reference}`) : null,
+        d.related_reference ? h('span', { class: 'pill' }, `Appel hors délai de ${d.related_reference}`) : null,
+        d.never_opened ? h('span', { class: 'pill new' }, 'Nouveau') : null,
         d.unread ? h('span', { class: 'pill new' }, `${d.unread} message${d.unread > 1 ? 's' : ''} non lu${d.unread > 1 ? 's' : ''}`) : null,
         statusPill(d.status))),
     h('h2', {}, d.title),
@@ -429,7 +431,7 @@ async function viewDossier(id) {
   try { data = await api('GET', `/dossiers/${id}`); } catch (e) {
     return shell('/dossiers', h('a', { href: '#/dossiers' }, '← Dossiers'), h('p', { class: e.body && e.body.recused ? 'alert warn' : 'alert err' }, e.message));
   }
-  const { dossier: d, documents, comments, events, conflicts, lastReadCommentId, canWrite, isAdmin, canManage, isRapporteur, closed } = data;
+  const { dossier: d, documents, comments, events, conflicts, lastReadCommentId, canWrite, isAdmin, canManage, isRapporteur, closed, initial, appealDeadline, appealOf } = data;
   const extra = isAdmin ? await Promise.all([api('GET', '/gov/membres'), api('GET', '/gov/seances')]).catch(() => null) : null;
   const docsById = Object.fromEntries(documents.map((x) => [x.id, x]));
   refreshUnread();
@@ -441,9 +443,10 @@ async function viewDossier(id) {
     h('li', {}, h('button', { onclick: () => openDocument(d, doc) },
       h('span', { class: 'doc-icon' }, (doc.original_name.split('.').pop() || '').toUpperCase().slice(0, 4)),
       h('span', {}, doc.original_name, doc.version > 1 ? ` (v${doc.version})` : '',
-        h('span', { class: 'piece' }, `${p === 'autre' ? '' : `Pièce ${p}) — `}${S.meta.pieces[p]} · ${fmtSize(doc.size)} · ${fmtDate(doc.uploaded_at)}`)))))));
+        h('span', { class: 'piece' }, `${p === 'autre' || p === 'anterieur' ? '' : `Pièce ${p}) — `}${S.meta.pieces[p]} · ${fmtSize(doc.size)} · ${fmtDate(doc.uploaded_at)}`),
+        doc.label ? h('span', { class: `piece${doc.label.startsWith('Copie') ? ' copy' : ''}` }, doc.label) : null))))));
 
-  const missing = Object.keys(S.meta.pieces).filter((p) => ['a', 'b', 'c', 'd', 'e', 'g', 'h'].includes(p) && !byPiece[p]);
+  const missing = d.kind === 'appel' ? [] : Object.keys(S.meta.pieces).filter((p) => ['a', 'b', 'c', 'd', 'e', 'g', 'h'].includes(p) && !byPiece[p]);
 
   // --- Fil de discussion ---
   const children = {};
@@ -526,6 +529,12 @@ async function viewDossier(id) {
   shell('/dossiers',
     h('a', { href: '#/dossiers', class: 'small' }, '← Dossiers'),
     h('div', { class: 'row between', style: null }, h('div', {}, h('div', { class: 'ref muted small' }, d.reference), h('h1', {}, d.title)), statusPill(d.status)),
+    d.kind === 'appel' ? h('div', { class: 'alert appel stack' },
+      h('p', {}, h('b', {}, 'Procédure d’appel'), ` de l’avis rendu sur le dossier `, h('a', { href: `#/dossiers/${initial.id}` }, initial.reference),
+        `, formé le ${fmtDate(d.created_at, false)} par ${d.appeal_requester} (${d.appeal_role === 'president_association' ? 'président de l’association' : 'porteur du projet'}, ${d.appeal_requester_email}).`),
+      h('p', { class: 'small' }, 'Examen en séance plénière, par des rapporteurs différents de ceux du dossier initial. Les copies du dossier initial figurent dans les documents (pièce « Dossier initial »).')) : null,
+    d.related_reference ? h('p', { class: 'alert warn small' }, `Appel formé hors délai contre l’avis du dossier ${d.related_reference} : enregistré comme une nouvelle demande, sans reprise du dossier initial.`) : null,
+    !initial && appealDeadline ? h('p', { class: 'small muted' }, appealOf ? h('span', {}, 'Un appel a été formé : ', h('a', { href: `#/dossiers/${appealOf.id}` }, appealOf.reference)) : `Délai d’appel : jusqu’au ${fmtDate(appealDeadline, false)}${Date.now() > appealDeadline ? ' (expiré)' : ''}.`) : null,
     closed ? h('p', { class: 'alert ok' }, `Procédure close et dossier archivé le ${fmtDate(closed.at)} par ${closed.by}. Le dossier est en lecture seule ; le relevé de clôture figure dans les actes.`) : null,
     h('div', { class: 'dossier-grid' },
       h('div', { class: 'stack' },
@@ -551,6 +560,7 @@ async function viewDossier(id) {
         adminBox,
         closed ? null : recuse),
       h('section', { class: 'stack', 'aria-label': 'Discussion' },
+        initial ? initialSection(initial) : null,
         h('div', { class: 'row between' }, h('h2', {}, `Discussion (${comments.length})`),
           !canWrite ? h('span', { class: 'pill' }, 'Lecture seule') : null),
         comments.length ? renderThread(0) : h('p', { class: 'empty card' }, 'Aucun commentaire. ' + (canWrite ? 'Soyez le premier à donner votre analyse.' : '')),
@@ -1101,6 +1111,26 @@ async function viewRapport() {
     h('div', { class: 'row between' }, h('h1', {}, 'Rapport annuel d’activité'), sel),
     h('p', { class: 'muted small' }, 'Art. 34.2 : nombre de dossiers, avis par catégorie, délais moyens. Aucun élément confidentiel.'), box);
   await load();
+}
+
+// ===================== Dossier initial (appel) =====================
+function initialSection(ini) {
+  const children = {};
+  for (const c of ini.comments) (children[c.parent_id || 0] ||= []).push(c);
+  const thread = (pid) => (children[pid] ? h('ul', { class: 'thread' }, children[pid].map((c) => h('li', {},
+    h('article', { class: 'comment initial' },
+      h('header', {}, h('b', {}, c.author_name), h('span', { class: 'quality' }, c.author_quality),
+        c.kind === 'rapport' ? h('span', { class: 'pill s-recevable' }, 'Rapport de rapporteur') : null,
+        h('time', {}, fmtDate(c.created_at))),
+      h('div', { class: 'body' }, c.body),
+      h('footer', {}, h('span', { class: 'sig' }, svg(ICONS.lock), `Dossier initial · n° ${c.id} · ${c.hash.slice(0, 10)}…`))),
+    thread(c.id)))) : null);
+  return h('details', { class: 'card stack', open: true },
+    h('summary', {}, `Dossier initial ${ini.reference} : avis et échanges (${ini.comments.length})`),
+    h('p', { class: 'small muted' }, `Rapporteurs du dossier initial : ${ini.rapporteurs.map((r) => r.full_name).join(', ') || '—'}. Votes : ${ini.scrutins.map((sc) => `${CH()[sc.result] || sc.result} (${fmtDate(sc.closed_at, false)})`).join(' ; ') || '—'}.`),
+    ini.actes.length ? h('div', {}, h('h3', {}, 'Avis et actes'), actesList(ini.actes, false, () => {})) : null,
+    h('h3', {}, 'Échanges du dossier initial'),
+    ini.comments.length ? thread(0) : h('p', { class: 'muted small' }, 'Aucun échange.'));
 }
 
 render();

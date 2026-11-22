@@ -90,6 +90,15 @@ CREATE TABLE IF NOT EXISTS dossiers (
   updated_at            INTEGER NOT NULL,
   closed_at             INTEGER,           -- clôture et archivage : le dossier passe en lecture seule
   closed_by             INTEGER REFERENCES users(id),
+  -- Procédure d'appel (nouvelle demande rattachée à un dossier dont l'avis a été rendu)
+  kind                  TEXT NOT NULL DEFAULT 'initiale' CHECK (kind IN ('initiale','appel')),
+  parent_id             INTEGER REFERENCES dossiers(id),
+  appeal_avis_id        INTEGER,
+  appeal_role           TEXT,              -- 'porteur' ou 'president_association'
+  appeal_requester      TEXT,
+  appeal_requester_email TEXT,
+  appeal_reason         TEXT,
+  related_reference     TEXT,              -- appel hors délai enregistré comme nouvelle demande
   UNIQUE (year, seq)
 );
 
@@ -393,6 +402,9 @@ let db = null;
 // Ajoute les colonnes introduites par les versions récentes à une base existante.
 const ADDED_COLUMNS = [
   ['dossiers', 'closed_at', 'INTEGER'], ['dossiers', 'closed_by', 'INTEGER'],
+  ['dossiers', 'kind', "TEXT NOT NULL DEFAULT 'initiale'"], ['dossiers', 'parent_id', 'INTEGER'], ['dossiers', 'appeal_avis_id', 'INTEGER'],
+  ['dossiers', 'appeal_role', 'TEXT'], ['dossiers', 'appeal_requester', 'TEXT'], ['dossiers', 'appeal_requester_email', 'TEXT'],
+  ['dossiers', 'appeal_reason', 'TEXT'], ['dossiers', 'related_reference', 'TEXT'],
   ['emargements', 'method', 'TEXT'], ['emargements', 'hash', 'TEXT'], ['emargements', 'signature', 'TEXT'],
   ['bulletins', 'hash', 'TEXT'], ['bulletins', 'signature', 'TEXT'],
 ];

@@ -214,3 +214,7 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .kpi { padding: 14px; } .kpi-v { font-size: 1.6rem; font-weight: 700; color: var(--accent); }
 .pill.s-recevable { background: #e6f3fa; color: #0a6aa8; border-color: transparent; }
+.pill.appel { background: #f1edff; color: #5b3fc4; border-color: transparent; }
+.alert.appel { background: #f1edff; color: #3b2a85; }
+.comment.initial { background: var(--surface-2); }
+.doc-list .piece.copy { color: #5b3fc4; font-weight: 600; }

@@ -48,6 +48,20 @@ Saisissez votre adresse et votre mot de passe, puis le code à 6 chiffres de l'a
 - **Séances.** Le président ou le secrétariat programme les séances. À la clôture de la séance, le procès-verbal est produit automatiquement.
 - **Rapport annuel.** Menu « Séances » → « Rapport annuel ».
 
+## Appel
+
+- **Qui forme l'appel :** le porteur ou le président de l'association.
+- **Délai :** 3 mois après la date de l'avis.
+- **Comment :** par le formulaire du site. Le demandeur choisit « Appel d'un avis déjà rendu », puis indique la référence du dossier et le code de vérification imprimé sur l'avis.
+- **Ce que fait l'outil :** il crée un dossier marqué « Appel » et y verse automatiquement :
+  - les copies des documents du dossier initial ;
+  - l'avis et son exemplaire signé ;
+  - le relevé de clôture.
+
+  Les échanges du dossier initial sont visibles dans le dossier d'appel, avec le nom et la qualité de leurs auteurs. Les déports sont maintenus.
+- **Examen :** en séance plénière, avec des rapporteurs différents. L'outil refuse les anciens rapporteurs et la procédure simplifiée.
+- **Passé le délai :** la demande n'est pas reconnue comme un appel. Elle est enregistrée comme une nouvelle demande, qui doit être complète.
+
 ## Conflit d'intérêts (art. 4.2)
 
 Si vous êtes auteur, co-auteur ou investigateur du projet, si vous avez un lien hiérarchique direct avec le porteur ou un intérêt financier : cliquez sur **« Déclarer un conflit d'intérêts »**. Vous perdez alors l'accès au dossier et ne recevez plus ses notifications. La déclaration est définitive et visible des autres membres.

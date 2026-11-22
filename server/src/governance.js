@@ -76,6 +76,9 @@ function designateRapporteur(dossier, userId, by) {
   const current = activeRapporteurs(dossier.id);
   if (current.some((r) => r.user_id === u.id)) throw new RuleError('Ce membre est déjà rapporteur');
   if (current.length >= 2) throw new RuleError('Deux rapporteurs sont déjà désignés (art. 28.1). Mettez fin à une désignation d’abord.');
+  if (dossier.kind === 'appel' && require('./appeal').previousRapporteurs(dossier).includes(u.id)) {
+    throw new RuleError('En appel, les rapporteurs doivent être différents de ceux du dossier initial (art. 33.1)');
+  }
   if (current.length === 1 && current[0].health_professional && u.health_professional) {
     throw new RuleError('Au moins un des deux rapporteurs ne doit pas exercer une profession de santé (art. 28.1)');
   }
@@ -112,6 +115,7 @@ function openScrutin({ dossier, by, procedure = 'ordinaire', secret = false, sea
   const rapp = activeRapporteurs(dossier.id);
   let electeurs = [];
   let nSeats;
+  if (procedure === 'simplifiee' && dossier.kind === 'appel') throw new RuleError('Un appel est examiné en séance plénière : la procédure simplifiée est exclue (art. 33.1)');
   if (procedure === 'simplifiee') {
     // Art. 30.2 : le président (ou le vice-président) et un rapporteur
     if (!['president', 'vice_president'].includes(by.fonction)) throw new RuleError('La procédure simplifiée est conduite par le président ou le vice-président (art. 30.2)');
@@ -436,6 +440,7 @@ async function generateAvisUnlocked({ dossier, scrutin, by, motivation, motivati
     validityMonths: months, lieu: config.avisLieu, date: Date.now(),
     signataire: by.full_name, signataireFonction: by.fonction, irb: { iorg: config.irbIorg, irb: config.irbNumber },
     integrity: check, unanimous: r.unanimous, verifCode: verifCode(),
+    parentReference: dossier.parent_id ? q().prepare('SELECT reference FROM dossiers WHERE id = ?').get(dossier.parent_id).reference : null,
   };
   const buffer = await pdf.avis(data);
   const acte = storeActe({
@@ -499,6 +504,7 @@ async function closeSeance(seance, by) {
 function annualStats(year) {
   const from = new Date(year, 0, 1).getTime(); const to = new Date(year + 1, 0, 1).getTime();
   const deposes = q().prepare('SELECT COUNT(*) n FROM dossiers WHERE created_at >= ? AND created_at < ?').get(from, to).n;
+  const appels = q().prepare("SELECT COUNT(*) n FROM dossiers WHERE kind = 'appel' AND created_at >= ? AND created_at < ?").get(from, to).n;
   const avis = q().prepare("SELECT a.*, s.procedure FROM actes a LEFT JOIN scrutins s ON s.id = a.scrutin_id WHERE a.type = 'avis' AND a.parent_id IS NULL AND a.created_at >= ? AND a.created_at < ?").all(from, to);
   const byCategory = Object.fromEntries(Object.keys(CHOICE_TO_STATUS).map((k) => [k, 0]));
   let simplifiees = 0;
@@ -527,7 +533,7 @@ function annualStats(year) {
   const checks = q().prepare('SELECT COUNT(*) n, SUM(ok) ok FROM integrity_checks WHERE at >= ? AND at < ?').get(from, to);
   const composition = q().prepare("SELECT fonction, COUNT(*) n FROM users WHERE status = 'actif' GROUP BY fonction").all();
   return {
-    year, deposes, avis: avis.length, byCategory, simplifiees, ordinaires: avis.length - simplifiees,
+    year, deposes, appels, avis: avis.length, byCategory, simplifiees, ordinaires: avis.length - simplifiees,
     delays: { n: delays.length, mean, median, max: delays.length ? delays[delays.length - 1] : null, withinLimit: delays.filter((d) => d <= config.avisDelayDays).length, limitDays: config.avisDelayDays, sansRecevabilite },
     seances: seancesN, deports, integrityChecks: { total: checks.n, conformes: checks.ok || 0 },
     composition: Object.fromEntries(composition.map((c) => [c.fonction, c.n])),

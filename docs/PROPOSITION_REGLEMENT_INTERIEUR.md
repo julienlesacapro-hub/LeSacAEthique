@@ -71,6 +71,24 @@ Chaque règle proposée est appliquée par le logiciel, sauf celles marquées *(
 
 > « Il porte une référence unique (CER-PROMEDNAV-AAAA-NNN), sa date, la liste et la version des documents examinés, la qualité des membres qui ont délibéré, l'empreinte du contrôle d'intégrité préalable au vote (art. 34-7) et un code de vérification. Le président le signe de sa main sur l'exemplaire imprimé par l'outil ; l'exemplaire signé est numérisé et versé dans l'outil, et l'original papier est conservé par le Secrétaire général (art. 6.2). Dès qu'un prestataire de signature électronique qualifiée au sens du règlement (UE) n° 910/2014 aura été retenu par le CE, la signature électronique qualifiée pourra remplacer la signature manuscrite. »
 
+**Article 33.1 (réexamen)** — remplacer par :
+
+> « 33.1 Appel. Le porteur ou le président de l'association peut faire appel de l'avis dans les [trois mois] qui suivent sa date. L'appel est une nouvelle demande, déposée par le formulaire du site internet. Il mentionne la référence du dossier initial et le code de vérification imprimé sur l'avis, et il comporte une lettre d'appel motivée et, le cas échéant, les éléments nouveaux.
+>
+> L'outil verse automatiquement au dossier d'appel les copies du dossier initial : documents, avis, relevé de clôture et échanges entre les membres, avec l'identité de leurs auteurs. Les déports du dossier initial sont maintenus.
+>
+> L'appel est examiné en séance plénière, par des rapporteurs différents de ceux du dossier initial. La procédure simplifiée est exclue. Un avis ne peut faire l'objet que d'un seul appel, et l'avis rendu en appel n'est pas susceptible d'appel.
+>
+> Passé le délai d'appel, la demande est enregistrée comme une nouvelle demande. Elle doit alors comporter l'ensemble des pièces de l'annexe 3, sans reprise du dossier initial.
+>
+> L'appel formé par le président de l'association est une saisine au sens de l'article 27.1. Il ne confère au CA ni au CE aucun pouvoir sur l'avis (art. 33.2). »
+
+*Note de rédaction :*
+
+- La rédaction actuelle prévoit un « réexamen » demandé par le seul porteur, dans les deux mois. La rédaction proposée le remplace par l'appel, dans les trois mois, ouvert aussi au président de l'association.
+- Le délai court à partir de la date de l'avis, et non de sa réception par le porteur. C'est le choix programmé dans l'outil : il est vérifiable sans contestation. Si vous préférez la date de réception, il faudrait un accusé de réception, que l'outil ne gère pas.
+- Le code de vérification sert à vérifier que le demandeur détient l'avis : un formulaire public ne peut pas vérifier seul l'identité de celui qui le remplit. Le président de l'association obtient ce code du porteur ou du comité.
+
 **Annexe 5 (engagement)** — ajouter :
 
 > « Je m'engage à ne communiquer à personne mes identifiants de connexion à l'outil LeSacAEthique, à signaler sans délai toute perte ou compromission, et à n'utiliser aucun autre canal que l'outil pour les échanges relatifs aux dossiers du CER-PROMEDNAV. »
@@ -310,5 +328,6 @@ Le président et le secrétariat signent le procès-verbal.
 | 34-9.4 bis | Vote signé par une nouvelle saisie du code de double authentification, reçu remis au membre | Oui |
 | 34-10 | PV, avis bilingue, versement de l'exemplaire signé à la main (avec code de vérification), clôture et archivage, courriel modifiable et conservé | Oui |
 | 34-10.3 | Conservation de l'original papier par le Secrétaire général | Non : mesure organisationnelle |
+| 33.1 | Appel dans les 3 mois (paramètre `APPEAL_DELAY_MONTHS`), code de l'avis exigé, copies automatiques, déports reportés, rapporteurs différents, séance plénière, un seul appel ; hors délai : nouvelle demande complète | Oui |
 | 34-11.2 | Destruction en fin de conservation | **Non** : développement à prévoir |
 | 34-2.2 e, 34-2.3, 34-4.6, 34-7.3 (copie externe), 34-8.4 | Mesures organisationnelles | Non applicable |

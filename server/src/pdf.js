@@ -85,6 +85,7 @@ async function avis(d) {
   doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(16).text('Avis du comité d’éthique de la recherche', { align: 'center' }).moveDown(0.2);
   doc.fillColor(GREY).font('Helvetica').fontSize(10).text(`Référence : ${d.numero} — ${dFr(d.date)}`, { align: 'center' }).moveDown(1);
 
+  if (d.dossier.kind === 'appel') p(doc, `Avis rendu en appel de l’avis du dossier ${d.parentReference}, sur la demande ${d.dossier.appeal_role === 'president_association' ? 'du président de l’association' : 'du porteur'}.`, { bold: true });
   p(doc, `Le ${d.longName} (${d.committee}), ${meeting}, a examiné le projet intitulé « ${d.dossier.title} », présenté par ${d.dossier.applicant_name}${d.dossier.applicant_affiliation ? ` (${d.dossier.applicant_affiliation})` : ''} (dossier ${d.dossier.reference}), sur la base des documents suivants :`);
   bullet(doc, d.documents.map((x) => `${x.original_name} — version ${x.version} — ${PIECE(x.piece)} — empreinte SHA-256 ${x.sha256.slice(0, 16)}…`), 8.5);
   if (d.procedure === 'simplifiee') {
@@ -183,7 +184,7 @@ async function rapport(d) {
   const fmt = (x) => (x == null ? '—' : `${x.toFixed(1).replace('.', ',')} jours`);
   h(doc, 'Activité');
   bullet(doc, [
-    `Demandes déposées : ${st.deposes}`,
+    `Demandes déposées : ${st.deposes}, dont appels : ${st.appels || 0}`,
     `Avis rendus : ${st.avis} (procédure ordinaire : ${st.ordinaires} ; procédure simplifiée : ${st.simplifiees})`,
     `Séances closes : ${st.seances}`,
     `Déports pour conflit d’intérêts : ${st.deports}`,

@@ -26,3 +26,4 @@ input[type=file] { padding: 8px; }
 .cer-submit:disabled { opacity: .6; }
 .cer-done { background: #e5f6f3; color: #0c5b55; border-radius: 12px; padding: 20px; }
 :focus-visible { outline: 3px solid var(--cer-gold); outline-offset: 2px; }
+.cer-label { display: block; font-weight: 600; font-size: .92rem; margin: 12px 0 4px; }

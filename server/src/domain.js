@@ -21,6 +21,7 @@ const PIECES = {
   h: 'Sources de financement et déclarations d’intérêts',
   i: 'Demande d’accès aux données du registre (annexe 4)',
   j: 'Avis du Conseil scientifique',
+  anterieur: 'Dossier initial (copies versées automatiquement lors de l’appel)',
   autre: 'Autre document',
 };
 
@@ -90,8 +91,13 @@ const createDossier = (data) => db.get().transaction(() => {
     reference, year, n, data.title, data.applicant_name, data.applicant_email, data.applicant_affiliation || '',
     data.investigator || '', data.qualification || 'RNIPH', data.qualification_reason || '', data.summary || '',
     data.funding || '', data.procedure === 'simplifiee' ? 'simplifiee' : 'ordinaire', 'depose', data.source || 'site', now, now);
+  if (data.kind === 'appel' || data.related_reference) {
+    db.get().prepare(`UPDATE dossiers SET kind = ?, parent_id = ?, appeal_avis_id = ?, appeal_role = ?, appeal_requester = ?, appeal_requester_email = ?,
+      appeal_reason = ?, related_reference = ? WHERE id = ?`).run(data.kind === 'appel' ? 'appel' : 'initiale', data.parent_id || null, data.appeal_avis_id || null,
+      data.appeal_role || null, data.appeal_requester || null, data.appeal_requester_email || null, data.appeal_reason || null, data.related_reference || null, r.lastInsertRowid);
+  }
   db.get().prepare('INSERT INTO dossier_events (dossier_id, at, user_id, type, value, details) VALUES (?,?,?,?,?,?)')
-    .run(r.lastInsertRowid, now, data.created_by || null, 'status', 'depose', `Dépôt (${data.source || 'site'})`);
+    .run(r.lastInsertRowid, now, data.created_by || null, 'status', 'depose', data.kind === 'appel' ? `Appel formé contre l’avis du dossier ${data.parent_reference} (${data.source || 'site'})` : `Dépôt (${data.source || 'site'})${data.related_reference ? ` — appel hors délai du dossier ${data.related_reference}, enregistré comme nouvelle demande` : ''}`);
   return getDossier(r.lastInsertRowid);
 }).immediate();
 

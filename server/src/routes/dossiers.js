@@ -47,7 +47,8 @@ const docView = (d) => ({
 
 router.get('/', (req, res) => {
   const rows = q().prepare(`
-    SELECT d.id, d.reference, d.title, d.applicant_name, d.status, d.procedure, d.qualification, d.created_at, d.updated_at,
+    SELECT d.id, d.reference, d.title, d.applicant_name, d.status, d.procedure, d.qualification, d.created_at, d.updated_at, d.kind, d.related_reference,
+      (SELECT p.reference FROM dossiers p WHERE p.id = d.parent_id) AS parent_reference,
       (SELECT COUNT(*) FROM documents x WHERE x.dossier_id = d.id) AS documents,
       (SELECT COUNT(*) FROM comments c WHERE c.dossier_id = d.id) AS comments,
       (SELECT COUNT(*) FROM comments c WHERE c.dossier_id = d.id AND c.id > COALESCE(r.last_read_comment_id, 0) AND c.author_id <> @uid) AS unread,
@@ -82,6 +83,9 @@ router.get('/:id', (req, res) => {
     scrutins, actes,
     lastReadCommentId: prev ? prev.last_read_comment_id : 0,
     canWrite: req.user.role !== 'lecture' && !d.closed_at, isAdmin: req.user.role === 'admin', canManage: gov.canManageDossiers(req.user) && !d.closed_at,
+    initial: require('../appeal').initialView(d),
+    appealDeadline: (() => { const ap = require('../appeal'); const a = !d.parent_id && ap.originalAvis(d.id); return a ? ap.addMonths(a.created_at, require('../config').appealDelayMonths) : null; })(),
+    appealOf: d.kind === 'appel' ? null : q().prepare("SELECT id, reference FROM dossiers WHERE parent_id = ? AND kind = 'appel'").get(d.id) || null,
     closed: d.closed_at ? { at: d.closed_at, by: q().prepare('SELECT full_name FROM users WHERE id = ?').get(d.closed_by)?.full_name } : null,
     isRapporteur: gov.isRapporteur(req.user.id, d.id), isMember: [...gov.VOTING, 'suppleant'].includes(req.user.fonction),
   });

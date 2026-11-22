@@ -17,6 +17,7 @@ Outil d'échanges sécurisés du **CER-PROMEDNAV**, comité d'éthique de la rec
   - procès-verbaux, avis bilingues selon l'annexe 7 et rapport annuel, en PDF ;
   - **votes signés** par une nouvelle saisie du code de double authentification, avec reçu remis au membre ;
   - **avis signé à la main** par le président, puis numérisé et versé avec contrôle du code de vérification. Le versement clôt et archive le dossier en lecture seule et produit un relevé de clôture ;
+  - **procédure d'appel** dans les 3 mois, avec reprise automatique du dossier initial (documents, avis, échanges avec l'identité de leurs auteurs). Hors délai, la demande est traitée comme une nouvelle demande complète ;
   - **courriel au porteur** sur décision du président, modifiable et envoyé depuis l'adresse du comité ; le texte exact est conservé ;
   - signature électronique qualifiée possible plus tard (dépôt de la version signée, déjà programmé).
 - **Gouvernance de l'outil** : l'administrateur est le président du comité, suppléé par le vice-président. Personne ne connaît les mots de passe. Un membre peut se déporter d'un dossier pour conflit d'intérêts.
@@ -55,7 +56,7 @@ Membres : navigateur / PWA / Electron / Capacitor ──(HTTPS)──►
 ```bash
 cd server
 npm ci
-npm test                                   # 36 tests : 2FA, droits, immuabilité, falsification, déport, votes, quorum, avis, signature…
+npm test                                   # 43 tests : 2FA, droits, immuabilité, falsification, déport, votes, quorum, avis, signature…
 npm run create-admin -- --email vous@exemple.fr --name "Prénom Nom" --quality "Président du CER"
 npm start                                  # http://localhost:8443
 ```

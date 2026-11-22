@@ -28,6 +28,27 @@
     <div class="cer-error" role="alert" hidden></div>
 
     <fieldset>
+      <legend>Type de demande *</legend>
+      <label class="cer-radio"><input type="radio" name="request_type" value="nouvelle" checked> Nouvelle demande d’avis</label>
+      <label class="cer-radio"><input type="radio" name="request_type" value="appel"> Appel d’un avis déjà rendu par le comité</label>
+    </fieldset>
+
+    <fieldset id="appeal-box" hidden>
+      <legend>Appel</legend>
+      <p class="cer-hint">L’appel doit être formé dans les <span id="appeal-months">3</span> mois qui suivent l’avis. Les documents du dossier initial, l’avis et les échanges du comité y sont alors repris automatiquement : joignez seulement la lettre d’appel et les éléments nouveaux. Au-delà de ce délai, la demande est enregistrée comme une <strong>nouvelle demande</strong> et l’ensemble du dossier doit être fourni.</p>
+      <label for="appeal_reference">Référence du dossier initial *</label>
+      <input id="appeal_reference" name="appeal_reference" placeholder="CER-PROMEDNAV-AAAA-NNN" autocomplete="off">
+      <label for="appeal_code">Code de vérification imprimé sur l’avis *</label>
+      <input id="appeal_code" name="appeal_code" placeholder="XXXX-XXXX" autocomplete="off">
+      <p class="cer-hint">Il figure en bas de chaque page de l’avis : il permet de vérifier que vous détenez l’avis contesté.</p>
+      <span class="cer-label">Vous êtes *</span>
+      <label class="cer-radio"><input type="radio" name="appeal_role" value="porteur" checked> Le porteur du projet</label>
+      <label class="cer-radio"><input type="radio" name="appeal_role" value="president_association"> Le président de l’association PROMEDNAV</label>
+      <label for="appeal_reason">Motifs de l’appel et éléments nouveaux *</label>
+      <textarea id="appeal_reason" name="appeal_reason" maxlength="8000" rows="6"></textarea>
+    </fieldset>
+
+    <fieldset class="only-new">
       <legend>Le projet</legend>
       <label for="title">Titre du projet *</label>
       <input id="title" name="title" required maxlength="300">
@@ -37,7 +58,7 @@
       <input id="funding" name="funding" maxlength="2000">
     </fieldset>
 
-    <fieldset>
+    <fieldset class="only-new">
       <legend>Qualification réglementaire *</legend>
       <label class="cer-radio"><input type="radio" name="qualification" value="RNIPH" checked> Recherche n'impliquant pas la personne humaine (RNIPH)</label>
       <label class="cer-radio"><input type="radio" name="qualification" value="autre"> Autre saisine (registre, document d'information, question éthique)</label>
@@ -48,7 +69,7 @@
     </fieldset>
 
     <fieldset>
-      <legend>Le porteur</legend>
+      <legend>Le demandeur</legend>
       <label for="applicant_name">Nom et prénom *</label>
       <input id="applicant_name" name="applicant_name" required autocomplete="name" maxlength="150">
       <label for="applicant_email">Adresse électronique *</label>
@@ -83,6 +104,7 @@
   <div id="cer-done" class="cer-done" hidden role="status">
     <h2>Demande déposée</h2>
     <p>Votre demande a été enregistrée sous la référence <strong id="cer-ref"></strong>.</p>
+    <p id="cer-msg"></p>
     <p>Conservez cette référence pour tout échange avec le secrétariat du comité.</p>
   </div>
 </main>

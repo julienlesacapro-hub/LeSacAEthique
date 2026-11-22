@@ -36,6 +36,7 @@ function build() {
     irbNumber: env('IRB_NUMBER', ''),                      // n° IRB si enregistrement OHRP
     avisValidityMonths: parseInt(env('AVIS_VALIDITY_MONTHS', '36'), 10), // art. 31.4 : trois ans au plus
     avisDelayDays: parseInt(env('AVIS_DELAY_DAYS', '30'), 10),           // art. 31.2
+    appealDelayMonths: parseInt(env('APPEAL_DELAY_MONTHS', '3'), 10),     // délai d'appel après l'avis
     // Fonctions autorisées à détenir le rôle administrateur de l'outil
     adminFunctions: (env('ADMIN_FUNCTIONS', 'president,vice_president')).split(',').map((s) => s.trim()).filter(Boolean),
     port: parseInt(env('PORT', '8443'), 10),

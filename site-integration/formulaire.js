@@ -37,7 +37,22 @@
 
   fetch(base + '/api/public/form-info').then(function (r) { return r.json(); }).then(function (info) {
     document.getElementById('limits').textContent = info.maxUploadMb + ' Mo par fichier, ' + info.maxFiles + ' fichiers au plus.';
+    if (info.appealDelayMonths) document.getElementById('appeal-months').textContent = info.appealDelayMonths;
   }).catch(function () {});
+
+  // Nouvelle demande / appel
+  var appealBox = document.getElementById('appeal-box');
+  var labelA = form.querySelector('label[for=piece_a]');
+  var labelB = form.querySelector('label[for=piece_b]');
+  var isAppeal = function () { return form.request_type.value === 'appel'; };
+  function syncType() {
+    var appel = isAppeal();
+    appealBox.hidden = !appel;
+    form.querySelectorAll('.only-new').forEach(function (el) { el.hidden = appel; });
+    labelA.textContent = appel ? 'a) Lettre d’appel signée *' : 'a) ' + PIECES.a;
+    labelB.textContent = appel ? 'b) Protocole modifié, s’il a changé' : 'b) ' + PIECES.b;
+  }
+  form.querySelectorAll('input[name=request_type]').forEach(function (r) { r.addEventListener('change', syncType); });
 
   var warn = document.getElementById('riph-warn');
   form.querySelectorAll('input[name=qualification]').forEach(function (r) {
@@ -53,22 +68,31 @@
     e.preventDefault();
     showError('');
     var fd = new FormData(form);
-    if (fd.get('qualification') === 'RIPH') return showError(warn.textContent);
+    var appel = isAppeal();
+    if (!appel && fd.get('qualification') === 'RIPH') return showError(warn.textContent);
     var missing = [];
-    ['title', 'applicant_name', 'applicant_email', 'qualification_reason'].forEach(function (k) {
+    (appel ? ['appeal_reference', 'appeal_code', 'appeal_reason', 'applicant_name', 'applicant_email'] : ['title', 'applicant_name', 'applicant_email', 'qualification_reason']).forEach(function (k) {
       if (!String(fd.get(k) || '').trim()) missing.push(form.querySelector('label[for=' + k + ']').textContent.replace(' *', ''));
     });
     if (missing.length) return showError('Champs obligatoires : ' + missing.join(', ') + '.');
-    if (!form.piece_a.files.length || !form.piece_b.files.length) return showError('Joignez au moins la lettre de saisine (a) et le protocole (b).');
+    if (appel && !form.piece_a.files.length) return showError('Joignez la lettre d’appel signée (a).');
+    if (!appel && (!form.piece_a.files.length || !form.piece_b.files.length)) return showError('Joignez au moins la lettre de saisine (a) et le protocole (b).');
     if (!form.attest_no_health_data.checked) return showError('Veuillez cocher l’attestation relative aux données de santé.');
     var btn = form.querySelector('.cer-submit');
     btn.disabled = true; btn.textContent = 'Envoi en cours…';
     fetch(endpoint, { method: 'POST', body: fd })
       .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
       .then(function (res) {
-        if (!res.ok) throw new Error(res.body.error || 'Envoi impossible');
+        if (!res.ok) {
+          if (res.body.appealStatus === 'hors_delai') {
+            // Délai d'appel expiré : on bascule sur une nouvelle demande complète
+            form.querySelector('input[name=request_type][value=nouvelle]').checked = true; syncType();
+          }
+          throw new Error(res.body.error || 'Envoi impossible');
+        }
         form.hidden = true;
         document.getElementById('cer-ref').textContent = res.body.reference;
+        if (res.body.message) document.getElementById('cer-msg').textContent = res.body.message;
         document.getElementById('cer-done').hidden = false;
         window.scrollTo(0, 0);
       })

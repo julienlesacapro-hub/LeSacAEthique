@@ -52,14 +52,14 @@ async function dispatch({ users, type, dossier, commentId = null, message, email
   }));
 }
 
-async function newDossier(dossier) {
+async function newDossier(dossier, { appel = null } = {}) {
   await dispatch({
     users: recipientsFor(dossier.id),
     type: 'nouveau_dossier',
     dossier,
-    message: `Nouvelle demande déposée : ${dossier.reference}`,
-    emailSubject: `Nouvelle demande ${dossier.reference}`,
-    emailText: `Une nouvelle demande d'avis a été déposée (référence ${dossier.reference}). Les documents sont consultables dans ${config.appName}.`,
+    message: appel ? `Appel déposé : ${dossier.reference} (dossier initial ${appel})` : `Nouvelle demande déposée : ${dossier.reference}`,
+    emailSubject: appel ? `Appel ${dossier.reference}` : `Nouvelle demande ${dossier.reference}`,
+    emailText: appel ? `Un appel a été formé contre l'avis rendu sur le dossier ${appel}. Il est enregistré sous la référence ${dossier.reference}, avec les copies du dossier initial. Les documents sont consultables dans ${config.appName}.` : `Une nouvelle demande d'avis a été déposée (référence ${dossier.reference}). Les documents sont consultables dans ${config.appName}.`,
     wantEmail: () => true,
   });
 }
