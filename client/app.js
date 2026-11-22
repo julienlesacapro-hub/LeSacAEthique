@@ -1204,7 +1204,7 @@ async function viewConservation() {
       h('p', { class: 'small muted' }, `Proposée le ${fmtDate(p.proposed_at, false)} · conservation expirée le ${fmtDate(p.retention_until, false)}`),
       p.dpd_opinion ? h('p', { class: `alert ${p.dpd_opinion === 'favorable' ? 'ok' : 'warn'} small` }, `Avis du DPD (${p.dpd_name}, ${p.dpd_method === 'outil' ? 'signé dans l’outil' : 'document versé'}) : ${p.dpd_opinion}${p.dpd_motivation ? ` — ${p.dpd_motivation}` : ''}`) : null,
       p.abandon_reason ? h('p', { class: 'small' }, `Motif d’abandon : ${p.abandon_reason}`) : null,
-      p.counts ? h('p', { class: 'small' }, `Détruits : ${p.counts.documents} document(s), ${p.counts.comments} commentaire(s), ${p.counts.votes} vote(s), ${p.counts.actes} acte(s). Avis conservés : ${p.counts.keptAvis.length}.`) : null);
+      p.counts ? h('p', { class: 'small' }, `Détruits : ${p.counts.documents} document(s), ${p.counts.comments} commentaire(s), ${p.counts.votes} vote(s), ${p.counts.actes} acte(s). Avis conservés : ${p.counts.keptAvis.length}. Procès-verbaux conservés (archives) : ${(p.counts.keptPV || []).length}.`) : null);
     if (p.status === 'attente_dpd' && S.user.dpd) {
       const f = h('form', { class: 'stack' },
         h('fieldset', { class: 'choices' }, h('legend', {}, 'Votre avis'), h('label', { class: 'check' }, h('input', { type: 'radio', name: 'opinion', value: 'favorable', required: true }), 'Favorable à la destruction'),

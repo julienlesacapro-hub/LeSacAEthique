@@ -14,7 +14,9 @@
  *  - Exécution : contrôle d'intégrité, certificat de destruction (sans
  *    donnée personnelle), suppression des enregistrements et des fichiers,
  *    anonymisation de la fiche du dossier, conservation facultative des avis
- *    signés (archives de l'association). Les commentaires détruits laissent
+ *    signés (archives de l'association). Les procès-verbaux de séance, qui
+ *    portent sur plusieurs dossiers, sont conservés au titre des archives.
+ *    Les commentaires détruits laissent
  *    une trace (empreinte seule) qui maintient la vérifiabilité de la chaîne.
  * La base n'autorise ces suppressions que pendant une destruction en cours
  * d'exécution, décidée et consignée (déclencheurs SQL).
@@ -178,10 +180,14 @@ async function decideAndExecute(proc, by, { keepAvis = true, note = '' }) {
   const ballots = scrutins.length ? q().prepare(`SELECT COUNT(*) n FROM bulletins WHERE scrutin_id IN (${scrutins.map(() => '?').join(',')})`).get(...scrutins).n : 0;
   const actes = q().prepare(`SELECT * FROM actes WHERE dossier_id IN ${inList}`).all(...ids);
   const keptActes = actes.filter((a) => keepAvis && a.type === 'avis');
+  // Procès-verbaux des séances où la famille a été examinée : conservés au titre des archives (art. 34-11.2)
+  const keptPV = scrutins.length ? q().prepare(`SELECT DISTINCT a.id, a.title, a.sha256 FROM actes a JOIN scrutins s ON s.seance_id = a.seance_id
+    WHERE a.type = 'pv' AND s.id IN (${scrutins.map(() => '?').join(',')}) ORDER BY a.id`).all(...scrutins) : [];
   const delActes = actes.filter((a) => !keptActes.includes(a));
   const counts = {
     dossiers: fam.map((x) => x.reference), documents: docs.length, comments: comments.length, votes: scrutins.length, ballots,
     actes: delActes.length, keptAvis: keptActes.map((a) => ({ title: a.title, sha256: a.sha256 })),
+    keptPV: keptPV.map((a) => ({ title: a.title, sha256: a.sha256 })),
     envois: q().prepare(`SELECT COUNT(*) n FROM envois WHERE dossier_id IN ${inList}`).get(...ids).n,
   };
   const pdf = require('./pdf');

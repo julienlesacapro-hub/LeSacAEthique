@@ -273,7 +273,8 @@ async function certificatDestruction(d) {
     'les données personnelles de la fiche du dossier (porteur, demandeur d’appel, titre, résumé) ;',
     'l’historique du dossier et les notifications.',
   ], 9);
-  p(doc, d.counts.keptAvis.length ? `Conservés au titre des archives de l’association : ${d.counts.keptAvis.map((a) => a.title).join(' ; ')}.` : 'Aucun avis n’a été conservé.', { size: 9.5 });
+  p(doc, d.counts.keptAvis.length ? `Avis conservés au titre des archives de l’association : ${d.counts.keptAvis.map((a) => a.title).join(' ; ')}.` : 'Aucun avis n’a été conservé.', { size: 9.5 });
+  p(doc, (d.counts.keptPV || []).length ? `Procès-verbaux de séance conservés au titre des archives de l’association (art. 34-11.2) : ${d.counts.keptPV.map((a) => a.title).join(' ; ')}.` : 'Aucun procès-verbal de séance ne mentionne ce dossier.', { size: 9.5 });
   h(doc, 'Empreintes des éléments détruits', 11.5);
   small(doc, 'Les empreintes SHA-256 permettent de prouver qu’un élément produit plus tard est, ou n’est pas, l’un des éléments détruits. Elles ne contiennent aucune donnée lisible.');
   bullet(doc, [

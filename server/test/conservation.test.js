@@ -48,15 +48,18 @@ async function api(method, url, who, body, form) {
 }
 
 /** Dossier instruit jusqu'à la clôture (avis signé à la main versé). */
-async function closedDossier(title) {
+async function closedDossier(title, { seance = false } = {}) {
   const d = domain.createDossier({ title, applicant_name: 'Dr Porteur', applicant_email: 'porteur@hopital.test', qualification: 'RNIPH', qualification_reason: 'x' });
   domain.addDocument(d.id, { originalname: 'protocole.pdf', buffer: PDF }, { piece: 'b' });
   await api('POST', `/api/dossiers/${d.id}/comments`, 't1', { body: `Analyse de ${title}` });
   await api('POST', `/api/gov/dossiers/${d.id}/rapporteurs`, 'pres', { user_id: U.t1.id });
   await api('POST', `/api/gov/dossiers/${d.id}/rapporteurs`, 'pres', { user_id: U.t2.id });
-  const sc = (await api('POST', `/api/gov/dossiers/${d.id}/scrutins`, 'pres', {})).body.scrutin;
+  let seanceId = null;
+  if (seance) seanceId = (await api('POST', '/api/gov/seances', 'pres', { date: Date.now(), mode: 'visio' })).body.seance.id;
+  const sc = (await api('POST', `/api/gov/dossiers/${d.id}/scrutins`, 'pres', { seance_id: seanceId })).body.scrutin;
   for (const k of ['pres', 't1', 't2']) await api('POST', `/api/gov/scrutins/${sc.id}/vote`, k, { choice: 'favorable', code: code(k) });
   await api('POST', `/api/gov/scrutins/${sc.id}/cloture`, 'pres');
+  if (seanceId) assert.equal((await api('POST', `/api/gov/seances/${seanceId}/cloture`, 'pres')).status, 200);
   const avis = (await api('POST', `/api/gov/dossiers/${d.id}/avis`, 'pres', { scrutin_id: sc.id, motivation: 'Conforme.' })).body.acte;
   const f = new FormData(); f.append('file', new Blob([PDF]), 'scan.pdf'); f.set('code', avis.meta.verifCode);
   const r = await api('POST', `/api/gov/actes/${avis.id}/signe-manuscrit`, 'pres', undefined, f);
@@ -73,7 +76,7 @@ before(async () => {
   mkUser('t2', {});
   mkUser('dpd', { role: 'lecture', fonction: 'consultatif', dpd: 1 });
   S.a = await closedDossier('Étude A');
-  S.b = await closedDossier('Étude B');
+  S.b = await closedDossier('Étude B', { seance: true });
 });
 after(() => { server.close(); db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 
@@ -198,6 +201,11 @@ test('après destruction : données supprimées, avis conservés, certificat, ch
   assert.deepEqual(kept, ['avis', 'avis', 'certificat_destruction']); // avis d'origine + exemplaire signé + certificat
   const r = await api('GET', `/api/gov/actes/${S.cert.id}/content`, 'pres');
   assert.equal(r.status, 200);
+  // le procès-verbal de la séance est conservé au titre des archives
+  const pv = db.get().prepare("SELECT * FROM actes WHERE type = 'pv'").all();
+  assert.equal(pv.length, 1);
+  const proc = db.get().prepare('SELECT counts_json FROM destructions WHERE id = ?').get(S.proc.id);
+  assert.equal(JSON.parse(proc.counts_json).keptPV.length, 1);
   const v = domain.verifyIntegrity();
   assert.equal(v.ok, true, v.problems.join('\n'));
   // hors destruction autorisée, rien ne peut être supprimé
